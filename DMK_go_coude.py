@@ -502,7 +502,7 @@ def order_resid(p,xx=None,yy=None,image=None,err=None,model=False,fjac=None):
     if model == True: return mmm,mvect,resid_2d,peak,sigmas
     if model == False: return [status,resid]
 
-def Order_Model_2D( X, *p ):
+'''def Order_Model_2D( X, *p ):
 
     rav = True
     
@@ -605,7 +605,7 @@ def Extraction( Cube, Cube_SNR, Trace, quick = True, arc = False, nosub = True )
                     slicenoise = np.absolute( sliceval / slicesnr )
                     negsnr     = np.where( slicesnr < 0.0 )[0]
                     if len( negsnr ) >= 1:
-                        pdb.set_trace()
+                        pdb.set_trace()'''
 
                     
 
