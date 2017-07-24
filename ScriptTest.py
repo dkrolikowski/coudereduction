@@ -1,3 +1,6 @@
+import matplotlib
+matplotlib.use("TkAgg")
+
 import matplotlib.pyplot as plt
 import DMK_go_coude as Fns
 import numpy as np
@@ -10,42 +13,13 @@ from astropy.io import fits
 from mpfit import mpfit
 from scipy import signal
 
+
 dir = os.getenv("HOME") + '/Research/YMG/coude_data/20140321/'
 rdir = dir + 'reduction/'
-# codedir = os.getenv("HOME") + '/codes/coudereduction/'
-codedir = os.getenv("HOME") + '/Research/Codes/coudereduction/'
+codedir = os.getenv("HOME") + '/codes/coudereduction/'
+# codedir = os.getenv("HOME") + '/Research/Codes/coudereduction/'
 
 os.chdir(dir)
-
-DarkCurVal = 0.0
-
-InfoFile = 'headstrip.csv'
-FileInfo = readcol.readcol( InfoFile, fsep = ',', asRecArray = True )
-DarkCube = FileInfo.ExpTime * DarkCurVal
-
-BiasInds = np.where( FileInfo.Type == 'zero' )[0]
-FlatInds = np.where( FileInfo.Type == 'flat' )[0]
-ArcInds  = np.where( (FileInfo.Type == 'comp') & ( (FileInfo.Object == 'Thar') | (FileInfo.Object == 'THAR') | (FileInfo.Object == 'A') ) )[0]
-ObjInds  = np.where( (FileInfo.Type == 'object') & (FileInfo.Object != 'SolPort') & (FileInfo.Object != 'solar port') & (FileInfo.Object != 'solar_ort') )[0]
-
-CalsDone = True
-SuperBias, FlatField = Fns.Basic_Cals( FileInfo.File[BiasInds], FileInfo.File[FlatInds], CalsDone, rdir, plots = False )
-
-ShowBPM = False
-BPM = Fns.Make_BPM( SuperBias, FlatField, 99.9, ShowBPM )
-
-RdNoise  = FileInfo.rdn[ArcInds] / FileInfo.gain[ArcInds]
-DarkCur  = DarkCube[ArcInds] / FileInfo.gain[ArcInds]
-ArcCube, ArcSNR = Fns.Make_Cube( FileInfo.File[ArcInds], RdNoise, DarkCur, Bias = SuperBias )
-
-RdNoise  = FileInfo.rdn[ObjInds] / FileInfo.gain[ObjInds]
-DarkCur  = DarkCube[ObjInds] / FileInfo.gain[ObjInds]
-ObjCube, ObjSNR = Fns.Make_Cube( FileInfo.File[ObjInds], RdNoise, DarkCur, Bias = SuperBias, Flat = FlatField, BPM = BPM )
-
-OrderStart = -32
-TraceDone = True
-MedCut = 95.0
-MedTrace, FitTrace = Fns.Get_Trace( FlatField, ObjCube, OrderStart, MedCut, rdir, TraceDone, plots = False )
 
 spec       = pickle.load(open(rdir+'extracted_spec_oldway.pkl','rb'))
 sig_spec   = pickle.load(open(rdir+'extracted_sigspec_oldway.pkl','rb'))
@@ -63,23 +37,12 @@ def Gaussian( x, A, mean, sigma, const ):
     gauss = A * np.exp( - ( x - mean ) ** 2.0 / ( 2.0 * sigma ** 2 ) ) + const
     return gauss
 
-# def Get_WavSol( Cube, RoughSol, snr, plots = True ):
-    
-#     fullwavsol = np.zeros( ( Cube.shape[0], Cube.shape[1], Cube.shape[2] ) )
-#     fullparams = np.zeros( ( Cube.shape[0], Cube.shape[1], 5 ) )
-    
-#     for frame in range( Cube.shape[0] ):
-#         for i in range( Cube.shape[1] ):
-            
 def Get_WavSol_Order( Cube, RoughSol, OrderToFit, snr, plots = True ):
     
     orderdif = Cube.shape[1] - RoughSol.shape[0]
     
     arcspec   = Cube[0, OrderToFit, :]
     startwsol = RoughSol[OrderToFit - orderdif]
-    
-#     arcspec = Cube[0,OrderToFit,:]
-#     startwsol = RoughSol
     
     arcspec           = arcspec - np.min( arcspec )
     belowmed          = np.where( arcspec < np.median( arcspec ) )
@@ -278,13 +241,12 @@ class Click_WavSol():
     A class for handling listening for user clicks on matplotlib plots and passing the 
     coordinates for use in the wavelength calibration.
     '''
-    def __init__(self, obswav, obsarc, calwav, calarc, extrax = None, extray = None):
+    def __init__(self, obswav, obsarc, calwav, calarc, lines ):
         self.obswav = obswav
         self.obsarc = obsarc
         self.calwav = calwav
         self.calarc = calarc
-        self.extrax = extrax
-        self.extray = extray
+        self.lines  = lines
         self.clicks = []
         
     def getcoord(self):
@@ -296,10 +258,12 @@ class Click_WavSol():
             plt.clf()
             plt.plot( self.calwav, self.calarc, 'r-' )
             plt.plot( self.obswav, self.obsarc, 'k-' )
+            for line in self.lines:
+                plt.axvline( x = line, color = 'b', ls = ':' )
             plt.xlim( startwav, startwav + 10.0 )
             
             fig = plt.gcf()
-            cid = fig.canvas.mpl_connect( 'button_press_event', self.__onclick__ )
+            cid = fig.canvas.mpl_connect( 'key_press_event', self.__onclick__ )
             plt.show()
             
             raw_input( 'Continue?' )
@@ -320,7 +284,6 @@ class Click_WavSol():
     def __onclick__(self, click):
         point = [click.xdata, click.ydata]
         print click.xdata, click.ydata
-        print click.x, click.y
         return self.clicks.append(point)
 
 order = 10
@@ -343,5 +306,5 @@ THARwav     = np.arange( len( THARspec ) ) * THARhead['CDELT1'] + THARhead['CRVA
 THARlines   = readcol.readcol( codedir + 'ThAr_list.txt', asRecArray = True )
 logTHARspec = np.log10(THARspec)
 
-lpoint = Click_WavSol( roughwav, logarcspec, THARwav, logTHARspec )
+lpoint = Click_WavSol( roughwav, logarcspec, THARwav, logTHARspec, THARlines.wav )
 lpoint.getcoord()
