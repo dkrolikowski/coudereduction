@@ -1,10 +1,10 @@
 import matplotlib
-matplotlib.use("TkAgg")
+matplotlib.use("Qt5Agg")
 
 import matplotlib.pyplot as plt
 import DMK_go_coude as Fns
 import numpy as np
-import os, readcol
+import os, readcol, pdb
 import scipy.optimize as optim
 import scipy.interpolate as interp
 import pickle
@@ -12,7 +12,6 @@ import pickle
 from astropy.io import fits 
 from mpfit import mpfit
 from scipy import signal
-
 
 dir = os.getenv("HOME") + '/Research/YMG/coude_data/20140321/'
 rdir = dir + 'reduction/'
@@ -242,51 +241,42 @@ class Click_WavSol():
     coordinates for use in the wavelength calibration.
     '''
     def __init__(self, obswav, obsarc, calwav, calarc, lines ):
-        self.obswav = obswav
-        self.obsarc = obsarc
-        self.calwav = calwav
-        self.calarc = calarc
-        self.lines  = lines
-        self.clicks = []
+        self.obswav   = obswav
+        self.obsarc   = obsarc
+        self.calwav   = calwav
+        self.calarc   = calarc
+        self.lines    = lines
+        self.obsclick = np.array([])
+        self.calclick = np.array([])
         
     def getcoord(self):
+
+        plt.clf()
+        plt.plot( self.calwav, self.calarc, 'r-' )
+        plt.plot( self.obswav, self.obsarc, 'k-' )
+        for line in self.lines:
+            plt.axvline( x = line, color = 'b', ls = ':' )
+        plt.xlim( np.min( self.obswav ) - 5.0, np.max( self.obswav ) + 5.0 )
         
-        startwav = np.min( self.obswav ) - 5.0
+        fig = plt.gcf()
+        cid = fig.canvas.mpl_connect( 'key_press_event', self.__onclick__ )
+        plt.show()
         
-        while startwav < np.max( self.obswav ) + 5.0:
-            print startwav
-            plt.clf()
-            plt.plot( self.calwav, self.calarc, 'r-' )
-            plt.plot( self.obswav, self.obsarc, 'k-' )
-            for line in self.lines:
-                plt.axvline( x = line, color = 'b', ls = ':' )
-            plt.xlim( startwav, startwav + 10.0 )
-            
-            fig = plt.gcf()
-            cid = fig.canvas.mpl_connect( 'key_press_event', self.__onclick__ )
-            plt.show()
-            
-            raw_input( 'Continue?' )
-            
-            startwav += 10.0
-            
-        ## plt.clf()
-        ## plt.plot( self.calwav, self.calarc, 'r-' )
-        ## plt.plot( self.obswav, self.obsarc, 'k-' )
-        ## plt.xlim( np.min( self.obswav ) - 5.0, np.max( self.obswav ) + 5.0 )
-        
-        ## fig = plt.gcf()
-        ## cid = fig.canvas.mpl_connect( 'button_press_event', self.__onclick__ )
-        ## plt.show()
-        
-        return self.clicks
+        return self.obsclick, self.calclick
 
     def __onclick__(self, click):
-        point = [click.xdata, click.ydata]
-        print click.xdata, click.ydata
-        return self.clicks.append(point)
+        print click.xdata
+        if click.key == 'a':
+            self.obsclick = np.append( self.obsclick, click.xdata )
+            return self.obsclick
+        elif click.key == 'b':
+            self.calclick = np.append( self.calclick, click.xdata )
+            return self.calclick
+        else:
+            print 'Please press a for an observed line and b for a calibrated line.\n'
+            print 'No other key will do anything for ya.'
 
-order = 10
+order = 7
 
 arcspec           = wspec[0, order, :]
 arcspec           = arcspec - np.min( arcspec )
@@ -295,8 +285,8 @@ arcspec[belowmed] = np.median( arcspec )
 logarcspec        = np.log10( arcspec )
 logarcspec        = logarcspec - np.min( logarcspec )
 
-maxwav   = 4226.6
-minwav   = 4157.3
+minwav   = 4011.2
+maxwav   = 4078.0
 roughwav = np.linspace( minwav, maxwav, len(arcspec) )
 
 THAR        = fits.open( codedir + 'thar_photron.fits' )[0]
@@ -308,3 +298,28 @@ logTHARspec = np.log10(THARspec)
 
 lpoint = Click_WavSol( roughwav, logarcspec, THARwav, logTHARspec, THARlines.wav )
 lpoint.getcoord()
+
+print lpoint.obsclick
+print lpoint.calclick
+
+pixs = np.zeros( len( lpoint.obsclick ) )
+
+for i in range( len( lpoint.obsclick ) ):
+    point   = lpoint.obsclick[i]
+    dists   = np.absolute( roughwav - point )
+    mindist = np.argmin( dists )
+    pixs[i] = mindist
+
+testfit = np.polyfit( pixs, lpoint.calclick, 4 )
+testwav = np.polyval( testfit, np.arange( len(arcspec) ) )
+
+plt.clf()
+plt.plot( testwav, logarcspec, 'k-' )
+plt.plot( THARwav, logTHARspec, 'r-' )
+for line in THARlines.wav:
+    plt.axvline( x = line, color = 'b', ls = ':' )
+plt.xlim( np.min( testwav ) - 5.0, np.max( testwav ) + 5.0 )
+plt.show()
+
+pickle.dump( testwav, open( codedir + 'ManualSols/order_' + str(order) + '_roughsol.pkl', 'wb' ) )
+pickle.dump( testfit, open( codedir + 'ManualSols/order_' + str(order) + '_params.pkl', 'wb' ) )
