@@ -15,8 +15,8 @@ from scipy import signal
 
 dir = os.getenv("HOME") + '/Research/YMG/coude_data/20140321/'
 rdir = dir + 'reduction/'
-codedir = os.getenv("HOME") + '/codes/coudereduction/'
-# codedir = os.getenv("HOME") + '/Research/Codes/coudereduction/'
+# codedir = os.getenv("HOME") + '/codes/coudereduction/'
+codedir = os.getenv("HOME") + '/Research/Codes/coudereduction/'
 
 os.chdir(dir)
 
@@ -276,7 +276,7 @@ class Click_WavSol():
             print 'Please press a for an observed line and b for a calibrated line.\n'
             print 'No other key will do anything for ya.'
 
-order = 5
+order = 3
 
 arcspec           = wspec[0, order, :]
 arcspec           = arcspec - np.min( arcspec )
@@ -285,8 +285,8 @@ arcspec[belowmed] = np.median( arcspec )
 logarcspec        = np.log10( arcspec )
 logarcspec        = logarcspec - np.min( logarcspec )
 
-minwav   = 3918.9
-maxwav   = 3984.2
+minwav   = 3830.9
+maxwav   = 3894.7
 roughwav = np.linspace( minwav, maxwav, len(arcspec) )
 
 THAR        = fits.open( codedir + 'thar_photron.fits' )[0]
