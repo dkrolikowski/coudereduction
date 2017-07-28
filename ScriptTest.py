@@ -276,7 +276,7 @@ class Click_WavSol():
             print 'Please press a for an observed line and b for a calibrated line.\n'
             print 'No other key will do anything for ya.'
 
-order = 7
+order = 5
 
 arcspec           = wspec[0, order, :]
 arcspec           = arcspec - np.min( arcspec )
@@ -285,8 +285,8 @@ arcspec[belowmed] = np.median( arcspec )
 logarcspec        = np.log10( arcspec )
 logarcspec        = logarcspec - np.min( logarcspec )
 
-minwav   = 4011.2
-maxwav   = 4078.0
+minwav   = 3918.9
+maxwav   = 3984.2
 roughwav = np.linspace( minwav, maxwav, len(arcspec) )
 
 THAR        = fits.open( codedir + 'thar_photron.fits' )[0]
