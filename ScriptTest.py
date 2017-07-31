@@ -205,7 +205,7 @@ def Fit_WavSol( wav, spec, linecatalog, snr = 50, pwidth = 10, minsep = 1, plots
             
         torej      = wavabsdev >= 3.0 * np.median( wavabsdev )
         tokeep     = np.logical_not( torej )
-        numrej     = len( np.where( torej == True )[0] )
+        numrej     = np.sum( torej )
         
         if abovekms > 0:
             if numrej > 0:
