@@ -607,7 +607,65 @@ def Extraction( Cube, Cube_SNR, Trace, quick = True, arc = False, nosub = True )
                     if len( negsnr ) >= 1:
                         pdb.set_trace()'''
 
-                    
+########## WAVELENGTH CALIBRATION FUNCTIONS AND WHAT NOT ##########
 
+def Gaussian( x, A, mean, sigma, const ):
+    '''
+    Returns a gaussian function for fitting purposes with scipy.optimize.curve_fit
+    '''
+    
+    gauss = A * np.exp( - ( x - mean ) ** 2.0 / ( 2.0 * sigma ** 2 ) ) + const
+
+    return gauss
+
+def Find_Peaks( wav, spec, peaksnr = 5, pwidth = 10, minsep = 1 ):
+    '''
+    Finds peaks in an arc spectrum using a wavelet transform, and recentroids the peaks by fitting with a gaussian.
+    '''
+    
+    peaks = signal.find_peaks_cwt( spec, np.arange( 1, 2 ), min_snr = peaksnr, noise_perc = 20 )
+    peaks = peaks[ (peaks > pwidth) & (peaks < len(spec) - pwidth) ]
+    
+    pixcent = np.array([])
+    wavcent = np.array([])
+        
+    for peak in peaks:
+        
+        yi   = spec[peak - pwidth:peak + pwidth]
+        inds = np.arange( len(yi), dtype = float )
+        
+        pguess   = [ yi[9], np.median( inds ), 0.9, np.median( spec ) ]
+        lowerbds = [ 0.1*pguess[0], pguess[1] - 2.0, 0.3, 0.0  ]
+        upperbds = [ np.inf, pguess[1] + 2.0, 1.5, np.inf ]
+        
+        try:
+            params, pcov = optim.curve_fit( Gaussian, inds, yi, p0 = pguess, bounds = (lowerbds,upperbds) )
+            
+            pixval  = peak - pwidth + params[1]
+            pixcent = np.append( pixcent, pixval )
+            
+            ceiling = np.ceil( pixval ).astype(int)
+            floor   = np.floor( pixval ).astype(int)
+            slope   = ( wav[ceiling] - wav[floor] ) / ( ceiling - floor )
+            wavval  = wav[floor] + slope * ( pixval - floor )
+            wavcent = np.append( wavcent, wavval )
+            
+        except RuntimeError:
+            pixval  = 'nan'
+            
+    vals = spec[pixcent.astype(int)]
+    oks  = np.ones( len(pixcent), int )
+    
+    for i in range( len(wavcent) ):
+        dist  = np.absolute( wavcent - wavcent[i] )
+        close = np.where( dist <= minsep )[0]
+        small = np.where( vals[close] < np.max( vals[close] ) )[0]
+        if len(small) != 0: oks[close[small]] = -1
+            
+    keep    = np.where( oks == 1 )
+    pixcent = pixcent[keep]
+    wavcent = wavcent[keep]
+            
+    return pixcent, wavcent
 
 
