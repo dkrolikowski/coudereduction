@@ -1,4 +1,4 @@
-import glob, os, pdb
+import glob, os, pdb, readcol
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,6 +7,7 @@ import pickle
 from astropy.io import fits
 import scipy.optimize as optim
 import scipy.interpolate as interp
+from scipy import signal
 from mpfit import mpfit
 
 def header_info( dir, outname ):
@@ -205,7 +206,7 @@ def Full_Trace( Cube, orderzeros, OrderStart ):
             if pix > 1: prev = trace[i,:,-pix+1]
             m1d = Cube[i,:,-pix+OrderStart]
             for order in range( numord ):
-                edge1 = prev[order] - 3
+                edge1 = int(prev[order] - 3)
                 if edge1 < 0: edge1 = 0
                 trace[i,order,-pix] = edge1 + np.argmax( m1d[edge1:edge1+6] )
                 if pix != 1:
@@ -306,9 +307,9 @@ def extractor(cube,cube_snr,trace,quick=True,arc=False,nosub=True):
             ##fix the order trace shape first, to account for random pixel shifts 
             ###!!!DANNY this could really be moved to the trace functions as an additional step
             ##rather than doing it multiple times here!!!!!
-            tracepars = np.polyfit(range(trace.shape[1]),trace[ord,:],2)
-            tracepoly = np.polyval(tracepars,range(trace.shape[1]))
-            trace[ord] = tracepoly
+            # tracepars = np.polyfit(range(trace.shape[1]),trace[ord,:],2)
+            # tracepoly = np.polyval(tracepars,range(trace.shape[1]))
+            # trace[ord] = tracepoly
             
             #now get the whole trace in a block
             tblock = np.zeros((trace.shape[1],16))
@@ -320,8 +321,8 @@ def extractor(cube,cube_snr,trace,quick=True,arc=False,nosub=True):
             yy     = yy.T
             ##cut out a region around the trace for this order
             for pix in range(trace.shape[1]):  
-                tblock[pix,:] = thisfrm[np.round(trace[ord,pix])-8:np.round(trace[ord,pix])+8,pix]
-                tsnr[pix,:]   = thissnr[np.round(trace[ord,pix])-8:np.round(trace[ord,pix])+8,pix]
+                tblock[pix,:] = thisfrm[int(trace[ord,pix])-8:int(trace[ord,pix])+8,pix]
+                tsnr[pix,:]   = thissnr[int(trace[ord,pix])-8:int(trace[ord,pix])+8,pix]
 ##a diagnostic plot for testing
 #             plt.imshow(thisfrm[trace[ord,1350]-8:trace[ord,1350]+8,1330:1360],aspect='auto')
 #             plt.plot(range(30),trace[ord,1330:1360]-trace[ord,1350]+9)
@@ -618,12 +619,88 @@ def Gaussian( x, A, mean, sigma, const ):
 
     return gauss
 
-def Find_Peaks( wav, spec, peaksnr = 5, pwidth = 10, minsep = 1 ):
-    '''
-    Finds peaks in an arc spectrum using a wavelet transform, and recentroids the peaks by fitting with a gaussian.
-    '''
+def Get_WavSol( Cube, RoughSol, rdir, codedir, plots = True, Orders = 'All' ):
     
-    peaks = signal.find_peaks_cwt( spec, np.arange( 1, 2 ), min_snr = peaksnr, noise_perc = 20 )
+    if not os.path.exists( rdir + 'wavcal' ):
+        os.mkdir( rdir + 'wavcal' )
+    
+    if Orders == 'All':
+        orderloop = range( Cube.shape[1] )
+    else:
+        orderloop = Orders
+
+    orderdif = RoughSol.shape[0] - Cube.shape[1]
+        
+    FullWavSol  = np.zeros( ( Cube.shape[0], Cube.shape[1], Cube.shape[2] ) )
+    FullParams  = np.zeros( ( Cube.shape[0], Cube.shape[1], 5 ) )
+    
+    THAR            = { 'wav': 0, 'spec': 0, 'logspec': 0, 'lines': 0 }
+    THARcalib       = fits.open( codedir + 'thar_photron.fits' )[0]
+    header          = THARcalib.header
+    THAR['spec']    = THARcalib.data
+    THAR['wav']     = np.arange( len(THAR['spec']) ) * header['CDELT1'] + header['CRVAL1']
+    THAR['logspec'] = np.log10( THAR['spec'] )
+    THAR['lines']   = readcol.readcol( codedir + 'ThAr_list.txt', asRecArray = True ).wav
+    
+    #for frame in range( Cube.shape[0] ):
+    for frame in range(1):
+        framepath = rdir + 'wavcal/arcframe_' + str(frame)
+        if not os.path.exists( framepath ):
+            os.mkdir( framepath )
+            
+        badorders = []
+        for order in orderloop:
+            orderpath = framepath + '/order_' + str(order)
+            if os.path.exists( orderpath ):
+                for f in glob.glob( orderpath + '/*' ): os.remove(f)
+            else:
+                os.mkdir( orderpath )
+            
+            arcspec   = Cube[frame,order,:]
+            prelimsol = RoughSol[order+orderdif,:]
+            
+            arcspec         = arcspec - np.min( arcspec )
+            logarcspec      = np.log10( arcspec + 1 )
+            logarcspec      = logarcspec - np.min( logarcspec )
+            
+            wavsol, params, keeps, rejs, flag = Fit_WavSol( prelimsol, arcspec, THAR['lines'], orderpath, plots = plots )
+            
+            if flag:
+                badorders.append(order)
+                
+            pickle.dump( keeps, open( orderpath + '/peakskept_ord_' + str(order) + '.pkl', 'wb' ) )
+            pickle.dump( rejs, open( orderpath + '/peaksrej_ord_' + str(order) + '.pkl', 'wb' ) )
+            
+            if plots:
+                plt.clf()
+                plt.plot( wavsol, logarcspec, 'k-', lw = 1 )
+                plt.plot( THAR['wav'], THAR['logspec'], 'r-', lw = 1 )
+                plt.xlim( wavsol[0], wavsol[-1] )
+                for peak in keeps['line']:
+                    plt.axvline( x = peak, color = 'b', ls = ':', lw = 1 )
+                plt.savefig(orderpath + '/fullspec_ord_' + str(order) + '.pdf' )
+
+                Plot_Wavsol_Windows( wavsol, keeps['line'], logarcspec, THAR, orderpath, frame, order )
+
+            FullWavSol[frame,order] = wavsol
+            FullParams[frame,order] = params
+    
+    print badorders
+    return FullWavSol, FullParams
+
+def Find_Peaks( wav, spec, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
+    
+    cutspec = spec.copy()
+    cut = np.percentile( spec, 90.0 )
+    below = spec >= cut
+    cutspec[below] = np.median(spec)
+    smoothed = signal.savgol_filter( cutspec, 101, 3)
+    spec /= smoothed
+    
+    # Find peaks using the cwt routine from scipy.signal
+    peaks = signal.find_peaks_cwt( spec, np.arange( 2, 4 ), min_snr = peaksnr, noise_perc = 20 )
+    
+    # Offset from start/end of spectrum by some number of pixels
     peaks = peaks[ (peaks > pwidth) & (peaks < len(spec) - pwidth) ]
     
     pixcent = np.array([])
@@ -631,11 +708,12 @@ def Find_Peaks( wav, spec, peaksnr = 5, pwidth = 10, minsep = 1 ):
         
     for peak in peaks:
         
+        xi   = wav[peak - pwidth:peak + pwidth]
         yi   = spec[peak - pwidth:peak + pwidth]
-        inds = np.arange( len(yi), dtype = float )
+        inds = np.arange( len(xi), dtype = float )
         
         pguess   = [ yi[9], np.median( inds ), 0.9, np.median( spec ) ]
-        lowerbds = [ 0.1*pguess[0], pguess[1] - 2.0, 0.3, 0.0  ]
+        lowerbds = [ 0.1 * pguess[0], pguess[1] - 2.0, 0.3, 0.0  ]
         upperbds = [ np.inf, pguess[1] + 2.0, 1.5, np.inf ]
         
         try:
@@ -652,7 +730,7 @@ def Find_Peaks( wav, spec, peaksnr = 5, pwidth = 10, minsep = 1 ):
             
         except RuntimeError:
             pixval  = 'nan'
-            
+    
     vals = spec[pixcent.astype(int)]
     oks  = np.ones( len(pixcent), int )
     
@@ -665,7 +743,132 @@ def Find_Peaks( wav, spec, peaksnr = 5, pwidth = 10, minsep = 1 ):
     keep    = np.where( oks == 1 )
     pixcent = pixcent[keep]
     wavcent = wavcent[keep]
-            
+
     return pixcent, wavcent
 
+def Fit_WavSol( wav, spec, THARcat, path, snr = 5, minsep = 0.5, plots = True ):
+    
+    wavsol = np.zeros( len(spec), dtype = np.float64 )
+    
+    pixcent, wavcent = Find_Peaks( wav, spec, peaksnr = snr, minsep = minsep )
+    
+    keeps = { 'pix': np.array([]), 'wav': np.array([]), 'line': np.array([]) }
+    rejs  = { 'pix': np.array([]), 'wav': np.array([]), 'line': np.array([]) }
+    
+    for i in range( len(wavcent) ):
+        dists    = np.absolute( THARcat - wavcent[i] )
+        mindist  = np.argmin( dists )
+            
+        if dists[mindist] <= 1.0:
+            keeps['pix']  = np.append( keeps['pix'], pixcent[i] )
+            keeps['wav']  = np.append( keeps['wav'], wavcent[i] )
+            keeps['line'] = np.append( keeps['line'], THARcat[mindist] )
 
+    dofit  = True
+    ploti  = 1
+    cutoff = 3.0# / 0.67449 # Corrects MAD to become sigma
+    
+    while dofit:
+        wavparams  = np.polyfit( keeps['pix'], keeps['line'], 4 )
+        ptsfromfit = np.polyval( wavparams, keeps['pix'] )
+        
+        wavresids  = ptsfromfit - keeps['line']
+        velresids  = wavresids / keeps['line'] * 3e5
+        resids     = { 'wav': wavresids, 'vel': velresids }
+        
+        velcut = np.sum( np.abs(resids['vel']) >= 0.2 )
+        torej  = np.abs( resids['wav'] ) >= cutoff * np.median( np.abs( resids['wav'] ) )
+        tokeep = np.logical_not( torej )
+        numrej = np.sum( torej )
+        
+        if velcut > 0:
+            if numrej > 0:
+                if plots:
+                    plotname = path + '/resids_round_' + str(ploti) + '.pdf'
+                    Plot_WavSol_Resids( resids, keeps['line'], cutoff, plotname, tokeep = tokeep, toreject = torej )
+                
+                rejs['pix']  = keeps['pix'][torej]
+                rejs['wav']  = keeps['wav'][torej]
+                rejs['line'] = keeps['line'][torej]
+                
+                keeps['pix']  = keeps['pix'][tokeep]
+                keeps['wav']  = keeps['wav'][tokeep]
+                keeps['line'] = keeps['line'][tokeep]
+                
+                ploti += 1
+                
+            elif numrej == 0 and cutoff == 3.0:
+                cutoff = 2.0
+                
+            else:
+                print 'There is something seriously wrong.\n'
+                print 'There are points > 1 km/s, but none are found to be rejected. FIX'
+                flag = True
+                if plots:
+                    plotname = path + '/resids_round_' + str(ploti) + '_flag.pdf'
+                    Plot_WavSol_Resids( resids, keeps['line'], cutoff, plotname )
+                break
+
+        else:
+            if plots:
+                plotname = path + '/resids_round_' + str(ploti) + '.pdf'
+                Plot_WavSol_Resids( resids, keeps['line'], cutoff, plotname )
+            flag = False
+            dofit = False
+            
+    wavsol = np.polyval( wavparams, np.arange( len(spec) ) )
+
+    return wavsol, wavparams, keeps, rejs, flag
+
+def Plot_WavSol_Resids( resids, lines, cutoff, savename, tokeep = None, toreject = None ):
+    
+    plt.clf()
+    fig, (wavax, velax) = plt.subplots( 2, 1, sharex = 'all' )
+    wavax.axhline( y = 0.0, color = 'k', ls = ':' )
+    velax.axhline( y = 0.0, color = 'k', ls = ':' )
+    if toreject == None:
+        wavax.plot( lines, resids['wav'], 'ko', mfc = 'none' )
+        velax.plot( lines, resids['vel'], 'ko', mfc = 'none' )
+        fig.suptitle( 'Lines Used: ' + str(lines.size) + ', Cutoff: ' + str(cutoff * 0.67449) + ' $\sigma$' )
+    else:
+        wavax.plot( lines[tokeep], resids['wav'][tokeep], 'ko', mfc = 'none' )
+        wavax.plot( lines[toreject], resids['wav'][toreject], 'kx' )
+        velax.plot( lines[tokeep], resids['vel'][tokeep], 'ko', mfc = 'none' )
+        velax.plot( lines[toreject], resids['vel'][toreject], 'kx' )
+        fig.suptitle( 'Lines Used: ' + str(lines[tokeep].size) + ', Lines Rej: ' + str(lines[toreject].size) 
+                     + ', Cutoff: ' + str(cutoff * 0.67449) +  ' $\sigma$' )
+    for x in [ -cutoff, cutoff ]:
+        wavax.axhline( y = x * np.median( np.abs( resids['wav'] ) ), color = 'r', ls = '--' )
+        velax.axhline( y = x * np.median( np.abs( resids['vel'] ) ), color = 'r', ls = '--' )
+    wavax.set_ylabel( 'Resids ($\AA$)' )
+    velax.set_ylabel( 'Resids (km/s)' )
+    wavax.yaxis.set_label_position("right"); velax.yaxis.set_label_position("right")
+    fig.subplots_adjust( hspace = 0 )
+    plt.savefig(savename)
+    
+    return None
+
+def Plot_Wavsol_Windows( wavsol, wavkeep, spec, THAR, path, frame, order ):
+    
+    numfigs = np.ceil( np.ceil( np.ptp( wavsol ) / 10.0 ) / 6.0 ).astype(int)
+    start   = np.min( wavsol )
+    for i in range(numfigs):
+        fig   = plt.figure()
+        j = 1
+        while start <= np.max( wavsol ) and j < 7:
+            sbplt = 230 + j
+            fig.add_subplot(sbplt)
+            plt.plot( wavsol, spec, 'k-', lw = 1 )
+            plt.plot( THAR['wav'], THAR['logspec'], 'r-', lw = 1 )
+            for peak in wavkeep:
+                plt.axvline( x = peak, color = 'b', ls = ':', lw = 1 )
+            plt.xlim( start, start + 10.0 )
+            plt.yticks( [], [] )
+            low = np.round( start, 1 )
+            plt.xticks( np.linspace( low, low + 10.0, 3 ), fontsize = 5 )
+            start += 10.0
+            j += 1
+        plt.suptitle( 'Frame: ' + str(frame) + ', Order: ' + str(order) + ', Window: ' + str(i) )
+        plt.savefig( path + '/specwindow_' + str(i) + '.pdf' )
+    
+    return None
