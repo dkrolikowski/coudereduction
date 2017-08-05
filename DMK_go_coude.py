@@ -1,12 +1,14 @@
-import glob, os, pdb, readcol
+import glob, os, pdb, readcol, pickle
+
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
 
 import numpy as np
-import matplotlib.pyplot as plt
-import pickle
-
-from astropy.io import fits
 import scipy.optimize as optim
 import scipy.interpolate as interp
+
+from astropy.io import fits
 from scipy import signal
 from mpfit import mpfit
 
@@ -277,19 +279,11 @@ def extractor(cube,cube_snr,trace,quick=True,arc=False,nosub=True):
         quick: if True, does a simple baground minimum subtractions and skips slow fitting process,
                 good for quicklook or testing the pipelines other functions. If False, full fit is done.
         arc: set to True for extracting arc frames, should also set quick to True
-    
         nosub: if True, no background subtraction carried out at all, mainly a diagnostic tool
     
     Outputs: 
         flux: cube (frames,orders,pixel) containing the extracted raw spectra
         error: corresponding uncertainties (same shape)
-    
-    General Overview of Steps:
-
-    for each order in each data frame:
-    
-
-
     '''
     flux  = np.zeros((cube.shape[0],trace.shape[0],trace.shape[1]))
     error = flux*0.0
@@ -624,7 +618,7 @@ def Gaussian( x, A, mean, sigma, const ):
 
     return gauss
 
-def Get_WavSol( Cube, RoughSol, rdir, codedir, plots = True, Orders = 'All' ):
+def Get_WavSol( Cube, rdir, codedir, plots = True, Orders = 'All' ):
     
     if not os.path.exists( rdir + 'wavcal' ):
         os.mkdir( rdir + 'wavcal' )
@@ -633,6 +627,8 @@ def Get_WavSol( Cube, RoughSol, rdir, codedir, plots = True, Orders = 'All' ):
         orderloop = range( Cube.shape[1] )
     else:
         orderloop = Orders
+
+    RoughSol = pickle.load( open( codedir + 'prelim_wsol.pkl', 'rb' ) )
 
     #orderdif = RoughSol.shape[0] - Cube.shape[1]
     orderdif = 1

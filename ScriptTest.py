@@ -5,12 +5,8 @@ import matplotlib.pyplot as plt
 import DMK_go_coude as Fns
 import numpy as np
 import os, readcol, pickle
-import scipy.optimize as optim
-import scipy.interpolate as interp
 
 from astropy.io import fits 
-from mpfit import mpfit
-from scipy import signal
 
 dir = os.getenv("HOME") + '/Research/YMG/coude_data/20161114/'
 rdir = dir + 'reduction/'
@@ -57,13 +53,15 @@ TraceDone = True
 MedCut = 90.0
 MedTrace, FitTrace = Fns.Get_Trace( FlatField, ObjCube, OrderStart, MedCut, rdir, TraceDone, plots = plotson )
 
-# wspec,sig_wspec = Fns.extractor( ArcCube,ArcSNR,FitTrace,quick=True,arc=True,nosub=True )
-# pickle.dump( wspec, open( rdir + 'extracted_wspec.pkl', 'wb' ) )
-# pickle.dump( sig_wspec, open( rdir + 'extracted_sigwspec.pkl', 'wb' ) )
-
-wspec     = pickle.load( open( rdir + 'extracted_wspec.pkl', 'rb' ) )
-sig_wspec = pickle.load( open( rdir + 'extracted_sigwspec.pkl', 'rb' ) )
-
+ExtractDone = True
+if ExtractDone:
+    wspec     = pickle.load( open( rdir + 'extracted_wspec.pkl', 'rb' ) )
+    sig_wspec = pickle.load( open( rdir + 'extracted_sigwspec.pkl', 'rb' ) )
+else:
+    wspec, sig_wspec = Fns.extractor( ArcCube, ArcSNR, FitTrace, quick = True, arc = True, nosub = True )
+    pickle.dump( wspec, open( rdir + 'extracted_wspec.pkl', 'wb' ) )
+    pickle.dump( sig_wspec, open( rdir + 'extracted_sigwspec.pkl', 'wb' ) )
+    
 # spec       = pickle.load(open(rdir+'extracted_spec_oldway.pkl','rb'))
 # sig_spec   = pickle.load(open(rdir+'extracted_sigspec_oldway.pkl','rb'))
 # wspec      = pickle.load(open(rdir+'extracted_wspec_oldway.pkl','rb'))
@@ -74,5 +72,4 @@ sig_wspec  = sig_wspec[:,::-1,:]
 # spec       = spec[:,::-1,:]
 # sig_spec   = sig_spec[:,::-1,:]
 
-roughsol = pickle.load( open( codedir + 'prelim_wsol.pkl', 'rb' ) )
-sols, params = Fns.Get_WavSol( wspec, roughsol, rdir, codedir, Orders = [50] )
+sols, params = Fns.Get_WavSol( wspec, rdir, codedir, Orders = [50] )
