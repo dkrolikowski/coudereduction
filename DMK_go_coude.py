@@ -82,7 +82,7 @@ def Basic_Cals( BiasFiles, FlatFiles, CalsDone, rdir, plots = False ):
         SuperBias = Build_Bias( BiasFiles )
         if plots == True:
             print 'Plotting bias:'
-            plt.imshow( np.log10( SuperBias ), interpolation = 'none' )
+            plt.imshow( np.log10( SuperBias ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
             plt.show()
         pickle.dump( SuperBias, open( rdir + 'bias.pkl', 'wb' ) )
 
@@ -91,7 +91,7 @@ def Basic_Cals( BiasFiles, FlatFiles, CalsDone, rdir, plots = False ):
         FlatField = Build_Flat_Field( FlatFiles, SuperBias )
         if plots == True:
             print 'Plotting flat:'
-            plt.imshow( np.log10( FlatField ), aspect = 'auto', interpolation = 'none' )
+            plt.imshow( np.log10( FlatField ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
             plt.colorbar(); plt.show()
         pickle.dump( FlatField, open( rdir + 'flat.pkl', 'wb' ) )
 
@@ -256,7 +256,7 @@ def Get_Trace( Flat, Cube, OrderStart, MedCut, rdir, TraceDone, plots = False ):
         FitTrace = pickle.load( open( rdir + 'fitted_trace.pkl', 'rb' ) )
 
     if plots == True:
-        plt.imshow( np.log10( Flat ), cmap = plt.get_cmap( 'gray' ) )
+        plt.imshow( np.log10( Flat ), aspect = 'auto', cmap = plt.get_cmap( 'gray' ) )
         for i in range( len( orderzeros ) ):
             plt.plot( FitTrace[i,:], 'r-' )
         plt.xlim( 0, 2048 )
@@ -320,9 +320,14 @@ def extractor(cube,cube_snr,trace,quick=True,arc=False,nosub=True):
             xx     = xx.T
             yy     = yy.T
             ##cut out a region around the trace for this order
-            for pix in range(trace.shape[1]):  
-                tblock[pix,:] = thisfrm[int(trace[ord,pix])-8:int(trace[ord,pix])+8,pix]
-                tsnr[pix,:]   = thissnr[int(trace[ord,pix])-8:int(trace[ord,pix])+8,pix]
+            for pix in range(trace.shape[1]):
+                low  = int(trace[ord,pix]) - 8
+                high = int(trace[ord,pix]) + 8
+                if low < 0:
+                    high -= low
+                    low   = 0
+                tblock[pix,:] = thisfrm[low:high,pix]
+                tsnr[pix,:]   = thissnr[low:high,pix]
 ##a diagnostic plot for testing
 #             plt.imshow(thisfrm[trace[ord,1350]-8:trace[ord,1350]+8,1330:1360],aspect='auto')
 #             plt.plot(range(30),trace[ord,1330:1360]-trace[ord,1350]+9)
@@ -629,7 +634,8 @@ def Get_WavSol( Cube, RoughSol, rdir, codedir, plots = True, Orders = 'All' ):
     else:
         orderloop = Orders
 
-    orderdif = RoughSol.shape[0] - Cube.shape[1]
+    #orderdif = RoughSol.shape[0] - Cube.shape[1]
+    orderdif = 1
         
     FullWavSol  = np.zeros( ( Cube.shape[0], Cube.shape[1], Cube.shape[2] ) )
     FullParams  = np.zeros( ( Cube.shape[0], Cube.shape[1], 5 ) )
@@ -659,7 +665,7 @@ def Get_WavSol( Cube, RoughSol, rdir, codedir, plots = True, Orders = 'All' ):
             arcspec   = Cube[frame,order,:]
             prelimsol = RoughSol[order+orderdif,:]
             
-            arcspec         = arcspec - np.min( arcspec )
+            #arcspec         = arcspec - np.min( arcspec )
             logarcspec      = np.log10( arcspec + 1 )
             logarcspec      = logarcspec - np.min( logarcspec )
             
@@ -715,7 +721,14 @@ def Find_Peaks( wav, spec, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
         pguess   = [ yi[9], np.median( inds ), 0.9, np.median( spec ) ]
         lowerbds = [ 0.1 * pguess[0], pguess[1] - 2.0, 0.3, 0.0  ]
         upperbds = [ np.inf, pguess[1] + 2.0, 1.5, np.inf ]
-        
+        print pguess
+        print peak
+        if xi[0] > 8424.0:
+            plt.plot( np.log10(spec), 'k-' )
+            plt.show()
+            plt.plot( xi, yi, 'k-' )
+            plt.axvline( x = np.mean([xi[9],xi[10]]), color = 'r' )
+            plt.show()
         try:
             params, pcov = optim.curve_fit( Gaussian, inds, yi, p0 = pguess, bounds = (lowerbds,upperbds) )
             

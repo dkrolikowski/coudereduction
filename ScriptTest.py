@@ -1,51 +1,61 @@
+import matplotlib
+matplotlib.use('TkAgg')
+
 import matplotlib.pyplot as plt
 import DMK_go_coude as Fns
 import numpy as np
-import os, readcol
+import os, readcol, pickle
 import scipy.optimize as optim
 import scipy.interpolate as interp
-import pickle
 
 from astropy.io import fits 
 from mpfit import mpfit
 from scipy import signal
 
-dir = os.getenv("HOME") + '/Research/YMG/coude_data/20140322/'
+dir = os.getenv("HOME") + '/Research/YMG/coude_data/20161114/'
 rdir = dir + 'reduction/'
-codedir = os.getenv("HOME") + '/codes/coudereduction/'
-#codedir = os.getenv("HOME") + '/Research/Codes/coudereduction/'
+#codedir = os.getenv("HOME") + '/codes/coudereduction/'
+codedir = os.getenv("HOME") + '/Research/Codes/coudereduction/'
+
+plotson = False
+
+if not os.path.exists( rdir ):
+    os.mkdir( rdir )
 
 os.chdir(dir)
 
-# DarkCurVal = 0.0
+DarkCurVal = 0.0
 
-# InfoFile = 'headstrip.csv'
-# FileInfo = readcol.readcol( InfoFile, fsep = ',', asRecArray = True )
-# DarkCube = FileInfo.ExpTime * DarkCurVal
+InfoFile = 'headstrip.csv'
+Fns.header_info( dir, InfoFile )
 
-# BiasInds = np.where( FileInfo.Type == 'zero' )[0]
-# FlatInds = np.where( FileInfo.Type == 'flat' )[0]
-# ArcInds  = np.where( (FileInfo.Type == 'comp') & ( (FileInfo.Object == 'Thar') | (FileInfo.Object == 'THAR') | (FileInfo.Object == 'A') ) )[0]
-# ObjInds  = np.where( (FileInfo.Type == 'object') & (FileInfo.Object != 'SolPort') & (FileInfo.Object != 'solar port') & (FileInfo.Object != 'solar_ort') )[0]
+FileInfo = readcol.readcol( InfoFile, fsep = ',', asRecArray = True )
 
-# CalsDone = True
-# SuperBias, FlatField = Fns.Basic_Cals( FileInfo.File[BiasInds], FileInfo.File[FlatInds], CalsDone, rdir, plots = False )
+DarkCube = FileInfo.ExpTime * DarkCurVal
 
-# ShowBPM = False
-# BPM = Fns.Make_BPM( SuperBias, FlatField, 99.9, ShowBPM )
+BiasInds = np.where( FileInfo.Type == 'zero' )[0]
+FlatInds = np.where( FileInfo.Type == 'flat' )[0]
+ArcInds  = np.where( (FileInfo.Type == 'comp') & ( (FileInfo.Object == 'Thar') | (FileInfo.Object == 'THAR') | (FileInfo.Object == 'A') ) )[0]
+ObjInds  = np.where( (FileInfo.Type == 'object') & (FileInfo.Object != 'solar') & (FileInfo.Object != 'SolPort') )[0]
 
-# RdNoise  = FileInfo.rdn[ArcInds] / FileInfo.gain[ArcInds]
-# DarkCur  = DarkCube[ArcInds] / FileInfo.gain[ArcInds]
-# ArcCube, ArcSNR = Fns.Make_Cube( FileInfo.File[ArcInds], RdNoise, DarkCur, Bias = SuperBias )
+CalsDone = True
+SuperBias, FlatField = Fns.Basic_Cals( FileInfo.File[BiasInds], FileInfo.File[FlatInds], CalsDone, rdir, plots = plotson )
 
-# RdNoise  = FileInfo.rdn[ObjInds] / FileInfo.gain[ObjInds]
-# DarkCur  = DarkCube[ObjInds] / FileInfo.gain[ObjInds]
-# ObjCube, ObjSNR = Fns.Make_Cube( FileInfo.File[ObjInds], RdNoise, DarkCur, Bias = SuperBias, Flat = FlatField, BPM = BPM )
+ShowBPM = False
+BPM = Fns.Make_BPM( SuperBias, FlatField, 99.9, ShowBPM )
 
-# OrderStart = -32
-# TraceDone = True
-# MedCut = 90.0
-# MedTrace, FitTrace = Fns.Get_Trace( FlatField, ObjCube, OrderStart, MedCut, rdir, TraceDone, plots = True )
+RdNoise  = FileInfo.rdn[ArcInds] / FileInfo.gain[ArcInds]
+DarkCur  = DarkCube[ArcInds] / FileInfo.gain[ArcInds]
+ArcCube, ArcSNR = Fns.Make_Cube( FileInfo.File[ArcInds], RdNoise, DarkCur, Bias = SuperBias )
+
+RdNoise  = FileInfo.rdn[ObjInds] / FileInfo.gain[ObjInds]
+DarkCur  = DarkCube[ObjInds] / FileInfo.gain[ObjInds]
+ObjCube, ObjSNR = Fns.Make_Cube( FileInfo.File[ObjInds], RdNoise, DarkCur, Bias = SuperBias, Flat = FlatField, BPM = BPM )
+
+OrderStart = -32
+TraceDone = True
+MedCut = 90.0
+MedTrace, FitTrace = Fns.Get_Trace( FlatField, ObjCube, OrderStart, MedCut, rdir, TraceDone, plots = plotson )
 
 # wspec,sig_wspec = Fns.extractor( ArcCube,ArcSNR,FitTrace,quick=True,arc=True,nosub=True )
 # pickle.dump( wspec, open( rdir + 'extracted_wspec.pkl', 'wb' ) )
@@ -61,8 +71,8 @@ sig_wspec = pickle.load( open( rdir + 'extracted_sigwspec.pkl', 'rb' ) )
 
 wspec      = wspec[:,::-1,:]
 sig_wspec  = sig_wspec[:,::-1,:]
-#spec       = spec[:,::-1,:]
-#sig_spec   = sig_spec[:,::-1,:]
+# spec       = spec[:,::-1,:]
+# sig_spec   = sig_spec[:,::-1,:]
 
 roughsol = pickle.load( open( codedir + 'prelim_wsol.pkl', 'rb' ) )
-sols, params = Fns.Get_WavSol( wspec, roughsol, rdir, codedir )
+sols, params = Fns.Get_WavSol( wspec, roughsol, rdir, codedir, Orders = [50] )
