@@ -7,11 +7,14 @@ dir = '/Users/dmk2347/Research/YMG/coude_data/20140321/'
 rdir = dir + 'reduction/oldred/'
 codedir = '/Users/dmk2347/codes/tullcoude/'
 
+if not os.path.exists( rdir ):
+    os.mkdir( rdir )
+
 ## Parameters for reduction
 
 # Run header_info to create headstrip file
 InfoFile    = 'headstrip.csv'
-Fns.header_info( dir, InfoFile )
+Fns.Header_Info( dir, InfoFile )
 
 # True - Make master bias and flat, False - read them in
 CalsDone    = True
@@ -34,6 +37,8 @@ WInterpDone = False
 # True - Continuum subtract/correct the spectra
 FlattenDone = True
 
+plotson = True
+
 ##### !!!!! Unsure about this
 # Set the dark current per s of exposure
 DarkCurVal = 0.0
@@ -45,19 +50,17 @@ os.chdir( dir ) # Switch to the data directory
 
 ## Read in information for data files from headstrip file
 
-FileInfo  = readcol( InfoFile, fsep = ',', asRecArray = True )
+FileInfo  = readcol.readcol( InfoFile, fsep = ',', asRecArray = True )
 DarkCube  = FileInfo.ExpTime * DarkCurVal
 
 # Determine which files are bias/flat/arc/obj
 BiasInds = np.where( FileInfo.Type == 'zero' )[0]
 FlatInds = np.where( FileInfo.Type == 'flat' )[0]
-ArcInds  = np.where( FileInfo.Type == 'comp' and ( FileInfo.Object == 'Thar' or FileInfo.Object == 'THAR' or FileInfo.Object == 'A' ) )[0]
-ObjInds  = np.where( FileInfo.Type == 'object' and FileInfo.Object != 'SolPort' and FileInfo.Object != 'solar port' and FileInfo.Object != 'solar_ort' )[0]
+ArcInds  = np.where( (FileInfo.Type == 'comp') & ( (FileInfo.Object == 'Thar') | (FileInfo.Object == 'THAR') | (FileInfo.Object == 'A') ) )[0]
+ObjInds  = np.where( (FileInfo.Type == 'object') & (FileInfo.Object != 'solar') & (FileInfo.Object != 'SolPort') )[0]
 
 ## Do basic calibrations
-
-if CalsDone == False:
-    SuperBias, FlatField = Fns.Basic_Cals( FileInfo.File[BiasInds], FileInfo.File[FlatInds], CalsDone, rdir )
+SuperBias, FlatField = Fns.Basic_Cals( FileInfo.File[BiasInds], FileInfo.File[FlatInds], CalsDone, rdir, plots = plotson )
 
 ## Make a first mask of bad pixels from the Flat and Bias
 BPM = Fns.Make_BPM( SuperBias, FlatField, 99.9, ShowBPM )

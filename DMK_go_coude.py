@@ -12,13 +12,13 @@ from astropy.io import fits
 from scipy import signal
 from mpfit import mpfit
 
-def header_info( dir, outname ):
+def Header_Info( dir, outname ):
 
     os.chdir(dir)
     files = glob.glob( '*.fits' )
 
     outfile = open( outname, 'wb' )
-    heading = 'File,Object,RA,DEC,Type,ExpTime,Order,Airmass,UTdate,UT,gain,rdn,zenith \n'
+    heading = 'File,Object,RA,DEC,Type,ExpTime,Order,Airmass,UTdate,UT,gain,rdn,zenith\n'
     outfile.write(heading)
     
     for i in range( len( files ) ):
@@ -630,8 +630,8 @@ def Get_WavSol( Cube, rdir, codedir, plots = True, Orders = 'All' ):
 
     RoughSol = pickle.load( open( codedir + 'prelim_wsol.pkl', 'rb' ) )
 
-    #orderdif = RoughSol.shape[0] - Cube.shape[1]
-    orderdif = 1
+    orderdif = RoughSol.shape[0] - Cube.shape[1]
+    #orderdif = 1
         
     FullWavSol  = np.zeros( ( Cube.shape[0], Cube.shape[1], Cube.shape[2] ) )
     FullParams  = np.zeros( ( Cube.shape[0], Cube.shape[1], 5 ) )
@@ -662,7 +662,7 @@ def Get_WavSol( Cube, rdir, codedir, plots = True, Orders = 'All' ):
             prelimsol = RoughSol[order+orderdif,:]
             
             #arcspec         = arcspec - np.min( arcspec )
-            logarcspec      = np.log10( arcspec + 1 )
+            logarcspec      = np.log10( arcspec - np.min( arcspec ) + 1.0 )
             logarcspec      = logarcspec - np.min( logarcspec )
             
             wavsol, params, keeps, rejs, flag = Fit_WavSol( prelimsol, arcspec, THAR['lines'], orderpath, plots = plots )
@@ -715,18 +715,20 @@ def Find_Peaks( wav, spec, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
         inds = np.arange( len(xi), dtype = float )
         
         pguess   = [ yi[9], np.median( inds ), 0.9, np.median( spec ) ]
-        lowerbds = [ 0.1 * pguess[0], pguess[1] - 2.0, 0.3, 0.0  ]
+        lowerbds = [ 4.0 * pguess[3], pguess[1] - 2.0, 0.3, 0.0  ]
         upperbds = [ np.inf, pguess[1] + 2.0, 1.5, np.inf ]
-        print pguess
-        print peak
-        if xi[0] > 8424.0:
-            plt.plot( np.log10(spec), 'k-' )
-            plt.show()
-            plt.plot( xi, yi, 'k-' )
-            plt.axvline( x = np.mean([xi[9],xi[10]]), color = 'r' )
-            plt.show()
+
         try:
             params, pcov = optim.curve_fit( Gaussian, inds, yi, p0 = pguess, bounds = (lowerbds,upperbds) )
+
+            print pguess
+            print lowerbds
+            print upperbds
+            print params
+            print pguess[0] / pguess[3]
+            plt.plot( xi, yi, 'k-' )
+            plt.plot( xi, Gaussian( inds, params[0], params[1], params[2], params[3] ), 'r-' )
+            plt.show()
             
             pixval  = peak - pwidth + params[1]
             pixcent = np.append( pixcent, pixval )
@@ -737,7 +739,7 @@ def Find_Peaks( wav, spec, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
             wavval  = wav[floor] + slope * ( pixval - floor )
             wavcent = np.append( wavcent, wavval )
             
-        except RuntimeError:
+        except ( RuntimeError, ValueError ):
             pixval  = 'nan'
     
     vals = spec[pixcent.astype(int)]

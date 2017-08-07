@@ -8,10 +8,10 @@ import os, readcol, pickle
 
 from astropy.io import fits 
 
-dir = os.getenv("HOME") + '/Research/YMG/coude_data/20161114/'
+dir = os.getenv("HOME") + '/Research/YMG/coude_data/20140321/'
 rdir = dir + 'reduction/'
-#codedir = os.getenv("HOME") + '/codes/coudereduction/'
-codedir = os.getenv("HOME") + '/Research/Codes/coudereduction/'
+codedir = os.getenv("HOME") + '/codes/coudereduction/'
+#codedir = os.getenv("HOME") + '/Research/Codes/coudereduction/'
 
 plotson = False
 
@@ -23,7 +23,7 @@ os.chdir(dir)
 DarkCurVal = 0.0
 
 InfoFile = 'headstrip.csv'
-Fns.header_info( dir, InfoFile )
+Fns.Header_Info( dir, InfoFile )
 
 FileInfo = readcol.readcol( InfoFile, fsep = ',', asRecArray = True )
 
@@ -61,15 +61,10 @@ else:
     wspec, sig_wspec = Fns.extractor( ArcCube, ArcSNR, FitTrace, quick = True, arc = True, nosub = True )
     pickle.dump( wspec, open( rdir + 'extracted_wspec.pkl', 'wb' ) )
     pickle.dump( sig_wspec, open( rdir + 'extracted_sigwspec.pkl', 'wb' ) )
-    
-# spec       = pickle.load(open(rdir+'extracted_spec_oldway.pkl','rb'))
-# sig_spec   = pickle.load(open(rdir+'extracted_sigspec_oldway.pkl','rb'))
-# wspec      = pickle.load(open(rdir+'extracted_wspec_oldway.pkl','rb'))
-# sig_wspec  = pickle.load(open(rdir+'extracted_sigwspec_oldway.pkl','rb'))
 
 wspec      = wspec[:,::-1,:]
 sig_wspec  = sig_wspec[:,::-1,:]
 # spec       = spec[:,::-1,:]
 # sig_spec   = sig_spec[:,::-1,:]
 
-sols, params = Fns.Get_WavSol( wspec, rdir, codedir, Orders = [50] )
+sols, params = Fns.Get_WavSol( wspec, rdir, codedir, Orders = [0] )
