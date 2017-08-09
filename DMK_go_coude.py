@@ -85,7 +85,7 @@ def Basic_Cals( BiasFiles, FlatFiles, CalsDone, rdir, plots = False ):
         if plots == True:
             print 'Plotting bias:'
             plt.imshow( np.log10( SuperBias ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
-            plt.show()
+            plt.colorbar(); plt.show()
         pickle.dump( SuperBias, open( rdir + 'bias.pkl', 'wb' ) )
 
         # Create master flat

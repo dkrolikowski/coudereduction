@@ -4,16 +4,17 @@ matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import DMK_go_coude as Fns
 import numpy as np
-import os, readcol, pickle
+import pandas as pd
+import os, readcol, pickle, pdb
 
 from astropy.io import fits 
 
 dir = os.getenv("HOME") + '/Research/YMG/coude_data/20140321/'
 rdir = dir + 'reduction/'
-codedir = os.getenv("HOME") + '/codes/coudereduction/'
-#codedir = os.getenv("HOME") + '/Research/Codes/coudereduction/'
+#codedir = os.getenv("HOME") + '/codes/coudereduction/'
+codedir = os.getenv("HOME") + '/Research/Codes/coudereduction/'
 
-plotson = False
+plotson = True
 
 if not os.path.exists( rdir ):
     os.mkdir( rdir )
@@ -25,7 +26,8 @@ DarkCurVal = 0.0
 InfoFile = 'headstrip.csv'
 Fns.Header_Info( dir, InfoFile )
 
-FileInfo = readcol.readcol( InfoFile, fsep = ',', asRecArray = True )
+#FileInfo = readcol.readcol( InfoFile, fsep = ',', asRecArray = True )
+FileInfo = pd.read_csv( InfoFile )
 
 DarkCube = FileInfo.ExpTime * DarkCurVal
 
@@ -34,19 +36,19 @@ FlatInds = np.where( FileInfo.Type == 'flat' )[0]
 ArcInds  = np.where( (FileInfo.Type == 'comp') & ( (FileInfo.Object == 'Thar') | (FileInfo.Object == 'THAR') | (FileInfo.Object == 'A') ) )[0]
 ObjInds  = np.where( (FileInfo.Type == 'object') & (FileInfo.Object != 'solar') & (FileInfo.Object != 'SolPort') )[0]
 
-CalsDone = True
-SuperBias, FlatField = Fns.Basic_Cals( FileInfo.File[BiasInds], FileInfo.File[FlatInds], CalsDone, rdir, plots = plotson )
+CalsDone = False
+SuperBias, FlatField = Fns.Basic_Cals( FileInfo.File[BiasInds].values, FileInfo.File[FlatInds].values, CalsDone, rdir, plots = plotson )
 
 ShowBPM = False
 BPM = Fns.Make_BPM( SuperBias, FlatField, 99.9, ShowBPM )
 
 RdNoise  = FileInfo.rdn[ArcInds] / FileInfo.gain[ArcInds]
 DarkCur  = DarkCube[ArcInds] / FileInfo.gain[ArcInds]
-ArcCube, ArcSNR = Fns.Make_Cube( FileInfo.File[ArcInds], RdNoise, DarkCur, Bias = SuperBias )
+ArcCube, ArcSNR = Fns.Make_Cube( FileInfo.File[ArcInds].values, RdNoise.values, DarkCur.values, Bias = SuperBias )
 
 RdNoise  = FileInfo.rdn[ObjInds] / FileInfo.gain[ObjInds]
 DarkCur  = DarkCube[ObjInds] / FileInfo.gain[ObjInds]
-ObjCube, ObjSNR = Fns.Make_Cube( FileInfo.File[ObjInds], RdNoise, DarkCur, Bias = SuperBias, Flat = FlatField, BPM = BPM )
+ObjCube, ObjSNR = Fns.Make_Cube( FileInfo.File[ObjInds].values, RdNoise.values, DarkCur.values, Bias = SuperBias, Flat = FlatField, BPM = BPM )
 
 OrderStart = -32
 TraceDone = True
