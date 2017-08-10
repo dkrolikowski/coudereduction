@@ -51,7 +51,7 @@ def Build_Bias( files ):
 
     testframe = fits.open( files[0] )
     testdata  = testframe[0].data
-    biascube = np.zeros( ( len( files ), testdata.shape[0], testdata.shape[1] ) )
+    biascube  = np.zeros( ( len( files ), testdata.shape[0], testdata.shape[1] ) )
 
     for i in range( len( files ) ):
         biascube[i] = fits.open( files[i] )[0].data
@@ -64,12 +64,12 @@ def Build_Flat_Field( files, SuperBias ):
 
     testframe = fits.open( files[0] )
     testdata  = testframe[0].data
-    flatcube = np.zeros( ( len( files ), testdata.shape[0], testdata.shape[1] ) )
+    flatcube  = np.zeros( ( len( files ), testdata.shape[0], testdata.shape[1] ) )
 
     for i in range( len( files ) ):
         flatcube[i] = fits.open( files[i] )[0].data - SuperBias
 
-    FlatField = np.median( flatcube, axis = 0 )
+    FlatField  = np.median( flatcube, axis = 0 )
     FlatField -= np.min( FlatField )
     FlatField /= np.max( FlatField )
 
@@ -78,31 +78,30 @@ def Build_Flat_Field( files, SuperBias ):
 def Basic_Cals( BiasFiles, FlatFiles, CalsDone, rdir, plots = False ):
 
     if CalsDone == False:
-        
         # Create master bias
         print 'Reading Bias Files'
         SuperBias = Build_Bias( BiasFiles )
-        if plots == True:
-            print 'Plotting bias:'
-            plt.imshow( np.log10( SuperBias ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
-            plt.colorbar(); plt.show()
         pickle.dump( SuperBias, open( rdir + 'bias.pkl', 'wb' ) )
 
         # Create master flat
         print 'Reading Flat Files'
         FlatField = Build_Flat_Field( FlatFiles, SuperBias )
-        if plots == True:
-            print 'Plotting flat:'
-            plt.imshow( np.log10( FlatField ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
-            plt.colorbar(); plt.show()
         pickle.dump( FlatField, open( rdir + 'flat.pkl', 'wb' ) )
 
     elif CalsDone == True:
-        
         print 'Reading in premade Bias and Flat files'
         SuperBias  = pickle.load( open( rdir + 'bias.pkl', 'rb' ) )
         FlatField  = pickle.load( open( rdir + 'flat.pkl', 'rb' ) )
 
+    if plots = True:
+        print 'Plotting bias:'
+        plt.imshow( np.log10( SuperBias ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
+        plt.colorbar(); plt.show()
+
+        print 'Plotting flat:'
+        plt.imshow( np.log10( FlatField ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
+        plt.colorbar(); plt.show()
+        
     return SuperBias, FlatField
 
 def Make_BPM( Bias, Flat, CutLevel, ShowBPM ):
