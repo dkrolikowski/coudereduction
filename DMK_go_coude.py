@@ -93,27 +93,27 @@ def Basic_Cals( BiasFiles, FlatFiles, CalsDone, rdir, plots = False ):
         SuperBias  = pickle.load( open( rdir + 'bias.pkl', 'rb' ) )
         FlatField  = pickle.load( open( rdir + 'flat.pkl', 'rb' ) )
 
-    if plots = True:
+    if plots:
         print 'Plotting bias:'
         plt.imshow( np.log10( SuperBias ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
-        plt.colorbar(); plt.show()
+        plt.colorbar(); plt.savefig( rdir + 'plots/bias.pdf' ); plt.show()
 
         print 'Plotting flat:'
         plt.imshow( np.log10( FlatField ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
-        plt.colorbar(); plt.show()
+        plt.colorbar(); plt.savefig( rdir + 'plots/flat.pdf' ); plt.show()
         
     return SuperBias, FlatField
 
-def Make_BPM( Bias, Flat, CutLevel, ShowBPM ):
+def Make_BPM( Bias, Flat, CutLevel, rdir, plots = False ):
 
     cutbias = np.percentile( Bias, CutLevel )
     BPM     = np.where( ( Bias > cutbias ) | ( Flat <= 0.0001 ) )
 
-    if ShowBPM:
+    if plots:
         plt.imshow( np.log10( Bias ), aspect = 'auto', interpolation = 'none' )
         plt.plot( BPM[1], BPM[0], 'r,' ) # Invert x,y for imshow
         print 'Plotting the bad pixel mask over the bias:'
-        plt.show()
+        plt.savefig( rdir + 'plots/bpm.pdf' ); plt.show()
 
     return BPM
 
@@ -256,13 +256,13 @@ def Get_Trace( Flat, Cube, OrderStart, MedCut, rdir, TraceDone, plots = False ):
         MedTrace = pickle.load( open( rdir + 'median_trace.pkl', 'rb' ) )
         FitTrace = pickle.load( open( rdir + 'fitted_trace.pkl', 'rb' ) )
 
-    if plots == True:
+    if plots:
         plt.imshow( np.log10( Flat ), aspect = 'auto', cmap = plt.get_cmap( 'gray' ) )
         for i in range( len( orderzeros ) ):
             plt.plot( FitTrace[i,:], 'r-' )
         plt.xlim( 0, 2048 )
         plt.ylim( 2048, 0 )
-        plt.show()
+        plt.savefig( rdir + 'plots/trace.pdf' ); plt.show()
 
     return MedTrace, FitTrace
 
@@ -663,8 +663,14 @@ def Get_WavSol( Cube, rdir, codedir, plots = True, Orders = 'All' ):
             #arcspec         = arcspec - np.min( arcspec )
             logarcspec      = np.log10( arcspec - np.min( arcspec ) + 1.0 )
             logarcspec      = logarcspec - np.min( logarcspec )
+
+            cutspec           = arcspec.copy()
+            cutslice          = arcspec >= np.percentile( arcspec, 90.0 )
+            cutspec[cutslice] = np.percentile( arcspec, 75.0 )
+            filterspec        = signal.savgol_filter( cutspec, 101, 3 )
+            smoothspec        = arcspec / filterspec
             
-            wavsol, params, keeps, rejs, flag = Fit_WavSol( prelimsol, arcspec, THAR['lines'], orderpath, plots = plots )
+            wavsol, params, keeps, rejs, flag = Fit_WavSol( prelimsol, smoothspec, THAR['lines'], orderpath, plots = plots )
             
             if flag:
                 badorders.append(order)
@@ -690,14 +696,7 @@ def Get_WavSol( Cube, rdir, codedir, plots = True, Orders = 'All' ):
     return FullWavSol, FullParams
 
 def Find_Peaks( wav, spec, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
-    
-    cutspec = spec.copy()
-    cut = np.percentile( spec, 90.0 )
-    below = spec >= cut
-    cutspec[below] = np.median(spec)
-    smoothed = signal.savgol_filter( cutspec, 101, 3)
-    spec /= smoothed
-    
+        
     # Find peaks using the cwt routine from scipy.signal
     peaks = signal.find_peaks_cwt( spec, np.arange( 2, 4 ), min_snr = peaksnr, noise_perc = 20 )
     
@@ -719,15 +718,6 @@ def Find_Peaks( wav, spec, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
 
         try:
             params, pcov = optim.curve_fit( Gaussian, inds, yi, p0 = pguess, bounds = (lowerbds,upperbds) )
-
-            print pguess
-            print lowerbds
-            print upperbds
-            print params
-            print pguess[0] / pguess[3]
-            plt.plot( xi, yi, 'k-' )
-            plt.plot( xi, Gaussian( inds, params[0], params[1], params[2], params[3] ), 'r-' )
-            plt.show()
             
             pixval  = peak - pwidth + params[1]
             pixcent = np.append( pixcent, pixval )

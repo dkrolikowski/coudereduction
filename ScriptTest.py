@@ -11,13 +11,17 @@ from astropy.io import fits
 
 dir = os.getenv("HOME") + '/Research/YMG/coude_data/20140321/'
 rdir = dir + 'reduction/'
-#codedir = os.getenv("HOME") + '/codes/coudereduction/'
-codedir = os.getenv("HOME") + '/Research/Codes/coudereduction/'
+codedir = os.getenv("HOME") + '/codes/coudereduction/'
+#codedir = os.getenv("HOME") + '/Research/Codes/coudereduction/'
 
-plotson = True
+plotson     = False
+CalsDone    = True
+TraceDone   = True
+ExtractDone = True
 
 if not os.path.exists( rdir ):
     os.mkdir( rdir )
+    os.mkdir( rdir + 'plots/' )
 
 os.chdir(dir)
 
@@ -36,11 +40,9 @@ FlatInds = np.where( FileInfo.Type == 'flat' )[0]
 ArcInds  = np.where( (FileInfo.Type == 'comp') & ( (FileInfo.Object == 'Thar') | (FileInfo.Object == 'THAR') | (FileInfo.Object == 'A') ) )[0]
 ObjInds  = np.where( (FileInfo.Type == 'object') & (FileInfo.Object != 'solar') & (FileInfo.Object != 'SolPort') )[0]
 
-CalsDone = False
 SuperBias, FlatField = Fns.Basic_Cals( FileInfo.File[BiasInds].values, FileInfo.File[FlatInds].values, CalsDone, rdir, plots = plotson )
 
-ShowBPM = False
-BPM = Fns.Make_BPM( SuperBias, FlatField, 99.9, ShowBPM )
+BPM = Fns.Make_BPM( SuperBias, FlatField, 99.9, rdir, plots = plotson )
 
 RdNoise  = FileInfo.rdn[ArcInds] / FileInfo.gain[ArcInds]
 DarkCur  = DarkCube[ArcInds] / FileInfo.gain[ArcInds]
@@ -51,11 +53,9 @@ DarkCur  = DarkCube[ObjInds] / FileInfo.gain[ObjInds]
 ObjCube, ObjSNR = Fns.Make_Cube( FileInfo.File[ObjInds].values, RdNoise.values, DarkCur.values, Bias = SuperBias, Flat = FlatField, BPM = BPM )
 
 OrderStart = -32
-TraceDone = True
-MedCut = 90.0
+MedCut = 95.0
 MedTrace, FitTrace = Fns.Get_Trace( FlatField, ObjCube, OrderStart, MedCut, rdir, TraceDone, plots = plotson )
 
-ExtractDone = True
 if ExtractDone:
     wspec     = pickle.load( open( rdir + 'extracted_wspec.pkl', 'rb' ) )
     sig_wspec = pickle.load( open( rdir + 'extracted_sigwspec.pkl', 'rb' ) )
@@ -69,4 +69,4 @@ sig_wspec  = sig_wspec[:,::-1,:]
 # spec       = spec[:,::-1,:]
 # sig_spec   = sig_spec[:,::-1,:]
 
-sols, params = Fns.Get_WavSol( wspec, rdir, codedir, Orders = [0] )
+sols, params = Fns.Get_WavSol( wspec, rdir, codedir, Orders = [41] )

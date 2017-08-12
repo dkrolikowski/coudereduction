@@ -10,6 +10,7 @@ codedir = '/Users/dmk2347/codes/tullcoude/'
 
 if not os.path.exists( rdir ):
     os.mkdir( rdir )
+    os.mkdir( rdir + '/plots' )
 
 ## Parameters for reduction
 
