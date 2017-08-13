@@ -223,9 +223,8 @@ def Fit_Trace( Trace ):
     
     for order in range( Trace.shape[0] ):
 
-        splfit          = interp.InterpolatedUnivariateSpline( range( Trace.shape[1] ), Trace[order,:] )
-        vals            = splfit( range( Trace.shape[1] ) )
-        vals[0]         = vals[1]
+        poly            = np.polyfit( np.arange( Trace.shape[1] ), Trace[order,:], 3 )
+        vals            = np.polyval( poly, np.arange( Trace.shape[1] ) )
         FitTrace[order] = vals
 
     return FitTrace
@@ -630,7 +629,6 @@ def Get_WavSol( Cube, rdir, codedir, plots = True, Orders = 'All' ):
     RoughSol = pickle.load( open( codedir + 'prelim_wsol.pkl', 'rb' ) )
 
     orderdif = RoughSol.shape[0] - Cube.shape[1]
-    #orderdif = 1
         
     FullWavSol  = np.zeros( ( Cube.shape[0], Cube.shape[1], Cube.shape[2] ) )
     FullParams  = np.zeros( ( Cube.shape[0], Cube.shape[1], 5 ) )
@@ -641,7 +639,7 @@ def Get_WavSol( Cube, rdir, codedir, plots = True, Orders = 'All' ):
     THAR['spec']    = THARcalib.data
     THAR['wav']     = np.arange( len(THAR['spec']) ) * header['CDELT1'] + header['CRVAL1']
     THAR['logspec'] = np.log10( THAR['spec'] )
-    THAR['lines']   = readcol.readcol( codedir + 'ThAr_list.txt', asRecArray = True ).wav
+    THAR['lines']   = pd.read_table( codedir + 'ThAr_list.txt', delim_whitespace = True ).wav.values
     
     #for frame in range( Cube.shape[0] ):
     for frame in range(1):
