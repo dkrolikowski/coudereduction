@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.optimize as optim
 import scipy.interpolate as interp
+import pandas as pd
 
 from astropy.io import fits
 from scipy import signal
@@ -35,9 +36,13 @@ def Header_Info( dir, outname ):
         if "airmass" in head.keys(): air     = str(head["airmass"])
         UT      = head["UT"]
         exptime = str(head["exptime"])
-        gain = str(head["gain3"])
+        if "GAIN3" in head.keys():
+            gain = str(head["gain3"])
+            rdn  = str(head["rdnoise3"])
+        else:
+            gain = str(head["gain2"])
+            rdn  = str(head["rdnoise2"])
         object  = head["object"]
-        rdn     = str(head["rdnoise3"])
         utdate  = head["DATE-OBS"]
         zd = head["ZD"]
         line = files[i] +','+object + ','+ ra +','+ dec+','+ itype+','+exptime+','+order+','+ air+','+utdate+','+ UT +','+gain+','+rdn+','+zd+' \n' 
@@ -172,18 +177,18 @@ def Start_Trace( flatslice, percent ):
     
     return orderzeros, ordervals
 
-def Find_Orders( Flat, OrderStart ):
+def Find_Orders( Flat, orderstart ):
 
-    midpoint = ( Flat.shape[1] + OrderStart ) / 2
+    midpoint = ( Flat.shape[1] + orderstart ) / 2
 
-    startzeros, startvals = Start_Trace( Flat[:,OrderStart], 60.0 )
+    startzeros, startvals = Start_Trace( Flat[:,orderstart], 60.0 )
     midzeros, midvals     = Start_Trace( Flat[:,midpoint], 45.0 )
 
     midzeros = midzeros[2:]
     midvals  = midvals[2:]
 
     slopes = []
-    dx     = Flat.shape[1] + OrderStart - midpoint
+    dx     = Flat.shape[1] + orderstart - midpoint
     for i in range( 30 ):
         dy = float( startzeros[i] - midzeros[i] )
         slopes.append( dy / dx )
@@ -191,21 +196,21 @@ def Find_Orders( Flat, OrderStart ):
     slopefit = np.polyfit( range( 30 ), slopes, 2 )
 
     finalzeros = np.round( midzeros + np.polyval( slopefit, range( len( midzeros ) ) ) * dx ).astype( int )
-    finalvals  = Flat[finalzeros, OrderStart]
+    finalvals  = Flat[finalzeros, orderstart]
 
     return finalzeros, finalvals
 
 
-def Full_Trace( Cube, orderzeros, OrderStart ):
+def Full_Trace( Cube, orderzeros, orderstart ):
 
     numord = len( orderzeros )
-    trace  = np.zeros( ( Cube.shape[0], numord, Cube.shape[2] + OrderStart ) )
+    trace  = np.zeros( ( Cube.shape[0], numord, Cube.shape[2] + orderstart ) )
 
     for i in range( Cube.shape[0] ):
-        for pix in range( 1, Cube.shape[2] + OrderStart + 1 ):
+        for pix in range( 1, Cube.shape[2] + orderstart + 1 ):
             prev = orderzeros
             if pix > 1: prev = trace[i,:,-pix+1]
-            m1d = Cube[i,:,-pix+OrderStart]
+            m1d = Cube[i,:,-pix+orderstart]
             for order in range( numord ):
                 edge1 = int(prev[order] - 3)
                 if edge1 < 0: edge1 = 0
@@ -219,33 +224,37 @@ def Full_Trace( Cube, orderzeros, OrderStart ):
 
 def Fit_Trace( Trace ):
 
-    FitTrace = Trace.copy()
+    FitTrace = np.zeros( ( Trace.shape[0], 2048 ) )
     
     for order in range( Trace.shape[0] ):
 
         poly            = np.polyfit( np.arange( Trace.shape[1] ), Trace[order,:], 3 )
-        vals            = np.polyval( poly, np.arange( Trace.shape[1] ) )
+        vals            = np.polyval( poly, np.arange( 2048 ) )
         FitTrace[order] = vals
 
     return FitTrace
 
-def Get_Trace( Flat, Cube, OrderStart, MedCut, rdir, TraceDone, plots = False ):
+def Get_Trace( Flat, Cube, MedCut, rdir, TraceDone, plots = False ):
 
-    orderzeros, ordervals = Find_Orders( Flat, OrderStart )
+    orderstart = -33
+    orderzeros, ordervals = Find_Orders( Flat, orderstart )
     
     if TraceDone == False:
         print 'Performing preliminary trace'
         if plots == True:
-            plt.plot( Flat[:,OrderStart], 'k-' )
+            plt.plot( Flat[:,orderstart], 'k-' )
             plt.plot( orderzeros, ordervals, 'ro' )
-            plt.show()
+            plt.savefig( rdir + 'plots/prelimtrace.pdf' ); plt.show()
 
         meds      = [ np.median( Cube[i,:,:2048] ) for i in range( Cube.shape[0] ) ]
         abovemed  = Cube[ np.where( meds >= np.percentile( meds, MedCut ) ) ]
 
-        trace    = Full_Trace( abovemed, orderzeros, OrderStart )
+        trace    = Full_Trace( abovemed, orderzeros, orderstart )
         MedTrace = np.median( trace, axis = 0 )
         FitTrace = Fit_Trace( MedTrace )
+        if FitTrace[0,-1] < 8.0:
+            MedTrace = MedTrace[1:]
+            FitTrace = FitTrace[1:]
         print 'Saving median trace to file'
         pickle.dump( MedTrace, open( rdir + 'median_trace.pkl', 'wb' ) )
         pickle.dump( FitTrace, open( rdir + 'fitted_trace.pkl', 'wb' ) )
@@ -257,7 +266,7 @@ def Get_Trace( Flat, Cube, OrderStart, MedCut, rdir, TraceDone, plots = False ):
 
     if plots:
         plt.imshow( np.log10( Flat ), aspect = 'auto', cmap = plt.get_cmap( 'gray' ) )
-        for i in range( len( orderzeros ) ):
+        for i in range( FitTrace.shape[0] ):
             plt.plot( FitTrace[i,:], 'r-' )
         plt.xlim( 0, 2048 )
         plt.ylim( 2048, 0 )
@@ -616,6 +625,37 @@ def Gaussian( x, A, mean, sigma, const ):
 
     return gauss
 
+def Smooth_Spec( spec ):
+    smoothed = spec.copy()
+    normfilt = spec.copy()
+    
+    for i in range( spec.shape[0] ):
+        for j in range( spec.shape[1] ):
+            cutspec      = spec[i,j].copy()
+            cut          = spec[i,j] >= np.percentile( spec[i,j], 90.0 )
+            cutspec[cut] = np.percentile( spec[i,j], 75.0 )
+            filtered     = signal.savgol_filter( cutspec, 101, 3 )
+            smoothed[i,j] /= filtered
+            normfilt[i,j]  = filtered / np.max( filtered )
+
+    return smoothed, normfilt
+
+def Get_Shift( cube, comp ):
+    
+    shifts = []
+    for j in np.arange( 5, cube.shape[0] - 4 ):
+        difs = []
+        for i in range( comp.shape[0] ):
+            dif = np.absolute( comp[i] - cube[j] )
+            difs.append( np.average( dif ) )
+        mindif = np.argmin( difs )
+        shifts.append( mindif - j )
+
+    test, counts = np.unique( shifts, return_counts = True )
+    shift        = test[np.argmax(counts)]
+
+    return shift
+
 def Get_WavSol( Cube, rdir, codedir, plots = True, Orders = 'All' ):
     
     if not os.path.exists( rdir + 'wavcal' ):
@@ -626,10 +666,16 @@ def Get_WavSol( Cube, rdir, codedir, plots = True, Orders = 'All' ):
     else:
         orderloop = Orders
 
-    RoughSol = pickle.load( open( codedir + 'prelim_wsol.pkl', 'rb' ) )
+    roughsol = pickle.load( open( codedir + 'prelim_wsol.pkl', 'rb' ) )
+    compspec = pickle.load( open( codedir + 'normfilt.pkl', 'rb' ) )
 
-    orderdif = RoughSol.shape[0] - Cube.shape[1]
-        
+    smoothcube, filtcube = Smooth_Spec( Cube )
+    orderdif             = Get_Shift( filtcube[0], compspec )
+
+    print orderdif
+    if orderdif < 0 or orderdif + Cube.shape[0] > roughsol.shape[0]:
+        raw_input( 'Problem with number of orders found.\n' )
+
     FullWavSol  = np.zeros( ( Cube.shape[0], Cube.shape[1], Cube.shape[2] ) )
     FullParams  = np.zeros( ( Cube.shape[0], Cube.shape[1], 5 ) )
     
@@ -641,9 +687,9 @@ def Get_WavSol( Cube, rdir, codedir, plots = True, Orders = 'All' ):
     THAR['logspec'] = np.log10( THAR['spec'] )
     THAR['lines']   = pd.read_table( codedir + 'ThAr_list.txt', delim_whitespace = True ).wav.values
     
-    #for frame in range( Cube.shape[0] ):
-    for frame in range(1):
-        framepath = rdir + 'wavcal/arcframe_' + str(frame)
+    for frame in range( Cube.shape[0] ):
+    #for frame in range(1):
+        framepath = rdir + 'wavcal/arcframe_' + str( frame )
         if not os.path.exists( framepath ):
             os.mkdir( framepath )
             
@@ -655,20 +701,13 @@ def Get_WavSol( Cube, rdir, codedir, plots = True, Orders = 'All' ):
             else:
                 os.mkdir( orderpath )
             
-            arcspec   = Cube[frame,order,:]
-            prelimsol = RoughSol[order+orderdif,:]
+            arcspec    = smoothcube[frame,order,:]
+            prelimsol  = roughsol[order+orderdif,:]
             
-            #arcspec         = arcspec - np.min( arcspec )
-            logarcspec      = np.log10( arcspec - np.min( arcspec ) + 1.0 )
-            logarcspec      = logarcspec - np.min( logarcspec )
+            logarcspec = np.log10( arcspec - np.min( arcspec ) + 1.0 )
+            logarcspec = logarcspec - np.min( logarcspec )
 
-            cutspec           = arcspec.copy()
-            cutslice          = arcspec >= np.percentile( arcspec, 90.0 )
-            cutspec[cutslice] = np.percentile( arcspec, 75.0 )
-            filterspec        = signal.savgol_filter( cutspec, 101, 3 )
-            smoothspec        = arcspec / filterspec
-            
-            wavsol, params, keeps, rejs, flag = Fit_WavSol( prelimsol, smoothspec, THAR['lines'], orderpath, plots = plots )
+            wavsol, params, keeps, rejs, flag = Fit_WavSol( prelimsol, arcspec, THAR['lines'], orderpath, plots = plots )
             
             if flag:
                 badorders.append(order)
@@ -685,7 +724,7 @@ def Get_WavSol( Cube, rdir, codedir, plots = True, Orders = 'All' ):
                     plt.axvline( x = peak, color = 'b', ls = ':', lw = 1 )
                 plt.savefig(orderpath + '/fullspec_ord_' + str(order) + '.pdf' )
 
-                Plot_Wavsol_Windows( wavsol, keeps['line'], logarcspec, THAR, orderpath, frame, order )
+                if order != 57: Plot_Wavsol_Windows( wavsol, keeps['line'], logarcspec, THAR, orderpath, frame, order )
 
             FullWavSol[frame,order] = wavsol
             FullParams[frame,order] = params
@@ -870,3 +909,68 @@ def Plot_Wavsol_Windows( wavsol, wavkeep, spec, THAR, path, frame, order ):
         plt.savefig( path + '/specwindow_' + str(i) + '.pdf' )
     
     return None
+
+########## WAVELENTH INTERPOLATION ##########
+
+def Interpolate_Obj_WavSol( wavsol, arctime, objtime ):
+
+    Wsol_Obj = np.zeros( ( len(objtime), wavsol.shape[1], wavsol.shape[2] ) )
+
+    for i in range( len( objtime ) ):
+        deltime = objtime[i] - arctime
+
+        if np.max( arctime ) < objtime[i] or np.min( arctime ) > objtime[i]:
+            print 'Target obs ' + str(i+1) + ' not bounded by arcs, using closest arc.'
+            closest     = np.argmin( np.abs( deltime ) )
+            Wsol_Obj[i] = wavsol[closest]
+        else:
+            bef = np.where( tdist > 0 )[0][-1]
+            aft = np.where( tdist < 0 )[0][0]
+            Wsol_Obj[i] = wavsol[bef] + ( wavsol[aft] - wavsol[bef] ) / ( arctime[aft] - arctime[bef] ) * ( objtime[i] - arctime[bef] )
+
+    return Wsol_Obj
+
+def Date_To_JD( year, month, day ):
+    '''
+    calculate julian day from calendar day
+    '''
+    if month == 1 or month == 2:
+        yearp  = year - 1
+        monthp = month + 12
+    else:
+        yearp  = year
+        monthp = month
+    
+    # this checks where we are in relation to October 15, 1582, the beginning
+    # of the Gregorian calendar.
+    if ((year < 1582) or
+        (year == 1582 and month < 10) or
+        (year == 1582 and month == 10 and day < 15)):
+        # before start of Gregorian calendar
+        B = 0
+    else:
+        # after start of Gregorian calendar
+        A = np.trunc(yearp / 100.)
+        B = 2 - A + np.trunc(A / 4.)
+        
+    if yearp < 0:
+        C = np.trunc((365.25 * yearp) - 0.75)
+    else:
+        C = np.trunc(365.25 * yearp)
+        
+    D  = np.trunc(30.6001 * (monthp + 1))
+    
+    jd = B + C + D + day + 1720994.5
+    
+    return jd  
+
+def UT_Convert( UT, UTdate ):
+    julday = np.zeros( len(UT) )
+    
+    for i in range( len(UT) ):
+        h, m, s     = np.array( UT[i].split(':') ).astype( np.float64 )
+        dayfrac     = h / 24.0 + m / 1440.0 + s / 86400.0
+        yr, mth, dy = np.array( UTdate[i].split('-') ).astype( np.float64 )
+        julday[i]   = Date_To_JD( yr, mth, dy + dayfrac )
+        
+    return julday

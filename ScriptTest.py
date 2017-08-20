@@ -9,10 +9,12 @@ import os, readcol, pickle, pdb
 
 from astropy.io import fits 
 
-dir = os.getenv("HOME") + '/Research/YMG/coude_data/20140321/'
+dir = os.getenv("HOME") + '/Research/YMG/coude_data/20161205/'
 rdir = dir + 'reduction/'
-codedir = os.getenv("HOME") + '/codes/coudereduction/'
-#codedir = os.getenv("HOME") + '/Research/Codes/coudereduction/'
+if os.getenv("HOME").split('/')[-1] == 'dmk2347':
+    codedir = os.getenv("HOME") + '/codes/coudereduction/'
+else:
+    codedir = os.getenv("HOME") + '/Research/Codes/coudereduction/'
 
 plotson     = False
 CalsDone    = True
@@ -38,7 +40,7 @@ DarkCube = FileInfo.ExpTime * DarkCurVal
 BiasInds = np.where( FileInfo.Type == 'zero' )[0]
 FlatInds = np.where( FileInfo.Type == 'flat' )[0]
 ArcInds  = np.where( (FileInfo.Type == 'comp') & ( (FileInfo.Object == 'Thar') | (FileInfo.Object == 'THAR') | (FileInfo.Object == 'A') ) )[0]
-ObjInds  = np.where( (FileInfo.Type == 'object') & (FileInfo.Object != 'solar') & (FileInfo.Object != 'SolPort') )[0]
+ObjInds  = np.where( (FileInfo.Type == 'object') & (FileInfo.Object != 'solar') & (FileInfo.Object != 'SolPort') & (FileInfo.Object != 'solar port') )[0]
 
 SuperBias, FlatField = Fns.Basic_Cals( FileInfo.File[BiasInds].values, FileInfo.File[FlatInds].values, CalsDone, rdir, plots = plotson )
 
@@ -52,9 +54,8 @@ RdNoise  = FileInfo.rdn[ObjInds] / FileInfo.gain[ObjInds]
 DarkCur  = DarkCube[ObjInds] / FileInfo.gain[ObjInds]
 ObjCube, ObjSNR = Fns.Make_Cube( FileInfo.File[ObjInds].values, RdNoise.values, DarkCur.values, Bias = SuperBias, Flat = FlatField, BPM = BPM )
 
-OrderStart = -32
 MedCut = 95.0
-MedTrace, FitTrace = Fns.Get_Trace( FlatField, ObjCube, OrderStart, MedCut, rdir, TraceDone, plots = plotson )
+MedTrace, FitTrace = Fns.Get_Trace( FlatField, ObjCube, MedCut, rdir, TraceDone, plots = plotson )
 
 if ExtractDone:
     wspec     = pickle.load( open( rdir + 'extracted_wspec.pkl', 'rb' ) )
@@ -69,4 +70,6 @@ sig_wspec  = sig_wspec[:,::-1,:]
 # spec       = spec[:,::-1,:]
 # sig_spec   = sig_spec[:,::-1,:]
 
-sols, params = Fns.Get_WavSol( wspec, rdir, codedir, Orders = [41] )
+sols, params = Fns.Get_WavSol( wspec, rdir, codedir, Orders = np.arange( 0, 57 ) )
+pickle.dump( sols, open( rdir + 'wavsol.pkl', 'wb' ) )
+pickle.dump( params, open( rdir + 'wavparams.pkl', 'wb' ) )
