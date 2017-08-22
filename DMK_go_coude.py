@@ -80,45 +80,45 @@ def Build_Flat_Field( files, SuperBias ):
 
     return FlatField
     
-def Basic_Cals( BiasFiles, FlatFiles, CalsDone, rdir, plots = False ):
+def Basic_Cals( BiasFiles, FlatFiles, Conf ):
 
-    if CalsDone == False:
+    if Conf.CalsDone == False:
         # Create master bias
         print 'Reading Bias Files'
         SuperBias = Build_Bias( BiasFiles )
-        pickle.dump( SuperBias, open( rdir + 'bias.pkl', 'wb' ) )
+        pickle.dump( SuperBias, open( Conf.rdir + 'bias.pkl', 'wb' ) )
 
         # Create master flat
         print 'Reading Flat Files'
         FlatField = Build_Flat_Field( FlatFiles, SuperBias )
-        pickle.dump( FlatField, open( rdir + 'flat.pkl', 'wb' ) )
+        pickle.dump( FlatField, open( Conf.rdir + 'flat.pkl', 'wb' ) )
 
-    elif CalsDone == True:
+    elif Conf.CalsDone == True:
         print 'Reading in premade Bias and Flat files'
-        SuperBias  = pickle.load( open( rdir + 'bias.pkl', 'rb' ) )
-        FlatField  = pickle.load( open( rdir + 'flat.pkl', 'rb' ) )
+        SuperBias  = pickle.load( open( Conf.rdir + 'bias.pkl', 'rb' ) )
+        FlatField  = pickle.load( open( Conf.rdir + 'flat.pkl', 'rb' ) )
 
-    if plots:
+    if Conf.PlotsOn:
         print 'Plotting bias:'
         plt.imshow( np.log10( SuperBias ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
-        plt.colorbar(); plt.savefig( rdir + 'plots/bias.pdf' ); plt.show()
+        plt.colorbar(); plt.savefig( Conf.rdir + 'plots/bias.pdf' ); plt.show()
 
         print 'Plotting flat:'
         plt.imshow( np.log10( FlatField ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
-        plt.colorbar(); plt.savefig( rdir + 'plots/flat.pdf' ); plt.show()
+        plt.colorbar(); plt.savefig( Conf.rdir + 'plots/flat.pdf' ); plt.show()
         
     return SuperBias, FlatField
 
-def Make_BPM( Bias, Flat, CutLevel, rdir, plots = False ):
+def Make_BPM( Bias, Flat, CutLevel, Conf ):
 
     cutbias = np.percentile( Bias, CutLevel )
     BPM     = np.where( ( Bias > cutbias ) | ( Flat <= 0.0001 ) )
 
-    if plots:
+    if Conf.PlotsOn:
         plt.imshow( np.log10( Bias ), aspect = 'auto', interpolation = 'none' )
         plt.plot( BPM[1], BPM[0], 'r,' ) # Invert x,y for imshow
         print 'Plotting the bad pixel mask over the bias:'
-        plt.savefig( rdir + 'plots/bpm.pdf' ); plt.show()
+        plt.savefig( Conf.rdir + 'plots/bpm.pdf' ); plt.show()
 
     return BPM
 
@@ -234,17 +234,17 @@ def Fit_Trace( Trace ):
 
     return FitTrace
 
-def Get_Trace( Flat, Cube, MedCut, rdir, TraceDone, plots = False ):
+def Get_Trace( Flat, Cube, MedCut, Conf ):
 
-    orderstart = -33
+    orderstart            = -33
     orderzeros, ordervals = Find_Orders( Flat, orderstart )
     
-    if TraceDone == False:
+    if Conf.TraceDone == False:
         print 'Performing preliminary trace'
-        if plots == True:
+        if Conf.PlotsOn:
             plt.plot( Flat[:,orderstart], 'k-' )
             plt.plot( orderzeros, ordervals, 'ro' )
-            plt.savefig( rdir + 'plots/prelimtrace.pdf' ); plt.show()
+            plt.savefig( Conf.rdir + 'plots/prelimtrace.pdf' ); plt.show()
 
         meds      = [ np.median( Cube[i,:,:2048] ) for i in range( Cube.shape[0] ) ]
         abovemed  = Cube[ np.where( meds >= np.percentile( meds, MedCut ) ) ]
@@ -256,21 +256,21 @@ def Get_Trace( Flat, Cube, MedCut, rdir, TraceDone, plots = False ):
             MedTrace = MedTrace[1:]
             FitTrace = FitTrace[1:]
         print 'Saving median trace to file'
-        pickle.dump( MedTrace, open( rdir + 'median_trace.pkl', 'wb' ) )
-        pickle.dump( FitTrace, open( rdir + 'fitted_trace.pkl', 'wb' ) )
+        pickle.dump( MedTrace, open( Conf.rdir + 'median_trace.pkl', 'wb' ) )
+        pickle.dump( FitTrace, open( Conf.rdir + 'fitted_trace.pkl', 'wb' ) )
 
-    elif TraceDone == True:
+    elif Conf.TraceDone == True:
         print 'Reading in premade Trace and plotting on Flat:'
-        MedTrace = pickle.load( open( rdir + 'median_trace.pkl', 'rb' ) )
-        FitTrace = pickle.load( open( rdir + 'fitted_trace.pkl', 'rb' ) )
+        MedTrace = pickle.load( open( Conf.rdir + 'median_trace.pkl', 'rb' ) )
+        FitTrace = pickle.load( open( Conf.rdir + 'fitted_trace.pkl', 'rb' ) )
 
-    if plots:
+    if Conf.PlotsOn:
         plt.imshow( np.log10( Flat ), aspect = 'auto', cmap = plt.get_cmap( 'gray' ) )
         for i in range( FitTrace.shape[0] ):
             plt.plot( FitTrace[i,:], 'r-' )
         plt.xlim( 0, 2048 )
         plt.ylim( 2048, 0 )
-        plt.savefig( rdir + 'plots/trace.pdf' ); plt.show()
+        plt.savefig( Conf.rdir + 'plots/trace.pdf' ); plt.show()
 
     return MedTrace, FitTrace
 
@@ -656,18 +656,18 @@ def Get_Shift( cube, comp ):
 
     return shift
 
-def Get_WavSol( Cube, rdir, codedir, plots = True, Orders = 'All' ):
+def Get_WavSol( Cube, Conf, plots = True, Orders = 'All' ):
     
-    if not os.path.exists( rdir + 'wavcal' ):
-        os.mkdir( rdir + 'wavcal' )
+    if not os.path.exists( Conf.rdir + 'wavcal' ):
+        os.mkdir( Conf.rdir + 'wavcal' )
     
     if Orders == 'All':
         orderloop = range( Cube.shape[1] )
     else:
         orderloop = Orders
 
-    roughsol = pickle.load( open( codedir + 'prelim_wsol.pkl', 'rb' ) )
-    compspec = pickle.load( open( codedir + 'normfilt.pkl', 'rb' ) )
+    roughsol = pickle.load( open( Conf.codedir + 'prelim_wsol.pkl', 'rb' ) )
+    compspec = pickle.load( open( Conf.codedir + 'normfilt.pkl', 'rb' ) )
 
     smoothcube, filtcube = Smooth_Spec( Cube )
     orderdif             = Get_Shift( filtcube[0], compspec )
@@ -680,16 +680,16 @@ def Get_WavSol( Cube, rdir, codedir, plots = True, Orders = 'All' ):
     FullParams  = np.zeros( ( Cube.shape[0], Cube.shape[1], 5 ) )
     
     THAR            = { 'wav': 0, 'spec': 0, 'logspec': 0, 'lines': 0 }
-    THARcalib       = fits.open( codedir + 'thar_photron.fits' )[0]
+    THARcalib       = fits.open( Conf.codedir + 'thar_photron.fits' )[0]
     header          = THARcalib.header
     THAR['spec']    = THARcalib.data
     THAR['wav']     = np.arange( len(THAR['spec']) ) * header['CDELT1'] + header['CRVAL1']
     THAR['logspec'] = np.log10( THAR['spec'] )
-    THAR['lines']   = pd.read_table( codedir + 'ThAr_list.txt', delim_whitespace = True ).wav.values
+    THAR['lines']   = pd.read_table( Conf.codedir + 'ThAr_list.txt', delim_whitespace = True ).wav.values
     
-    for frame in range( Cube.shape[0] ):
-    #for frame in range(1):
-        framepath = rdir + 'wavcal/arcframe_' + str( frame )
+    #for frame in range( Cube.shape[0] ):
+    for frame in range(1):
+        framepath = Conf.rdir + 'wavcal/arcframe_' + str( frame )
         if not os.path.exists( framepath ):
             os.mkdir( framepath )
             
@@ -707,7 +707,7 @@ def Get_WavSol( Cube, rdir, codedir, plots = True, Orders = 'All' ):
             logarcspec = np.log10( arcspec - np.min( arcspec ) + 1.0 )
             logarcspec = logarcspec - np.min( logarcspec )
 
-            wavsol, params, keeps, rejs, flag = Fit_WavSol( prelimsol, arcspec, THAR['lines'], orderpath, plots = plots )
+            wavsol, params, keeps, rejs, flag = Fit_WavSol( prelimsol, arcspec, THAR['lines'], orderpath, THAR, plots = plots )
             
             if flag:
                 badorders.append(order)
@@ -783,9 +783,9 @@ def Find_Peaks( wav, spec, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
 
     return pixcent, wavcent
 
-def Fit_WavSol( wav, spec, THARcat, path, snr = 5, minsep = 0.5, plots = True ):
+def Fit_WavSol( wav, spec, THARcat, path, THAR, snr = 5, minsep = 0.5, plots = True ):
     
-    wavsol = np.zeros( len(spec), dtype = np.float64 )
+    wavsol = np.zeros( len(spec) )
     
     pixcent, wavcent = Find_Peaks( wav, spec, peaksnr = snr, minsep = minsep )
     
@@ -803,7 +803,7 @@ def Fit_WavSol( wav, spec, THARcat, path, snr = 5, minsep = 0.5, plots = True ):
 
     dofit  = True
     ploti  = 1
-    cutoff = 3.0# / 0.67449 # Corrects MAD to become sigma
+    cutoff = 3.0 / 0.67449 # Corrects MAD to become sigma
     
     while dofit:
         wavparams  = np.polyfit( keeps['pix'], keeps['line'], 4 )
@@ -817,12 +817,33 @@ def Fit_WavSol( wav, spec, THARcat, path, snr = 5, minsep = 0.5, plots = True ):
         torej  = np.abs( resids['wav'] ) >= cutoff * np.median( np.abs( resids['wav'] ) )
         tokeep = np.logical_not( torej )
         numrej = np.sum( torej )
+
+        # velcut     = np.sum( np.abs(resids['vel']) >= 0.2 )
+        # gtcut      = np.abs( resids['wav'] ) >= cutoff * np.median( np.abs( resids['wav'] ) )
+        # numrej     = np.sum( gtcut )
+        # big        = np.argmax( np.abs( resids['wav'] ) )
+        # torej      = np.zeros( len(resids['wav']), dtype = np.bool )
+        # torej[big] = True
+        # tokeep     = np.logical_not( torej )
         
         if velcut > 0:
             if numrej > 0:
                 if plots:
                     plotname = path + '/resids_round_' + str(ploti) + '.pdf'
-                    Plot_WavSol_Resids( resids, keeps['line'], cutoff, plotname, tokeep = tokeep, toreject = torej )
+                    Plot_WavSol_Resids( resids, keeps['line'], cutoff * 0.67449, plotname, tokeep = tokeep, toreject = torej )
+
+                    # wav = np.polyval(wavparams,np.arange(len(spec)))
+                    # plt.clf()
+                    # plt.plot( wav, np.log10(spec-spec.min()), 'k-', lw = 1 )
+                    # plt.plot( THAR['wav'], THAR['logspec'], 'r-', lw = 1 )
+                    # plt.xlim( wav[0], wav[-1] )
+                    # for peak in keeps['line'][tokeep]:
+                    #     plt.axvline( x = peak, color = 'b', ls = ':', lw = 1 )
+                    # for peak in keeps['line'][torej]:
+                    #     plt.axvline( x = peak, color = 'g', ls = ':', lw = 1 )
+                    # plt.show()
+
+                    # Plot_Wavsol_Windows( wav, keeps['line'][tokeep], np.log10(spec-spec.min()), THAR, None, 0, 0 )
                 
                 rejs['pix']  = keeps['pix'][torej]
                 rejs['wav']  = keeps['wav'][torej]
@@ -834,8 +855,8 @@ def Fit_WavSol( wav, spec, THARcat, path, snr = 5, minsep = 0.5, plots = True ):
                 
                 ploti += 1
                 
-            elif numrej == 0 and cutoff == 3.0:
-                cutoff = 2.0
+            elif numrej == 0 and cutoff == 3.0 / 0.67449:
+                cutoff = 2.0 / 0.67449
                 
             else:
                 print 'There is something seriously wrong.\n'
@@ -882,6 +903,8 @@ def Plot_WavSol_Resids( resids, lines, cutoff, savename, tokeep = None, toreject
     wavax.yaxis.set_label_position("right"); velax.yaxis.set_label_position("right")
     fig.subplots_adjust( hspace = 0 )
     plt.savefig(savename)
+    ### REMOVE AFTER TESTING
+    #plt.show()
     
     return None
 
@@ -906,7 +929,8 @@ def Plot_Wavsol_Windows( wavsol, wavkeep, spec, THAR, path, frame, order ):
             start += 10.0
             j += 1
         plt.suptitle( 'Frame: ' + str(frame) + ', Order: ' + str(order) + ', Window: ' + str(i) )
-        plt.savefig( path + '/specwindow_' + str(i) + '.pdf' )
+        if path != None: plt.savefig( path + '/specwindow_' + str(i) + '.pdf' )
+        else: plt.show()
     
     return None
 
