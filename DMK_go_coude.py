@@ -1,7 +1,7 @@
 import glob, os, pdb, readcol, pickle
 
-import matplotlib
-matplotlib.use('TkAgg')
+import matplotlib as mpl
+mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 
 import numpy as np
@@ -125,7 +125,6 @@ def Make_BPM( Bias, Flat, CutLevel, Conf ):
 def Make_Cube( Files, ReadNoise, DarkCur, Bias = None, Flat = None, BPM = None ):
 
     for i in range( len( Files ) ):
-        #print 'Reading ' + files[i]
         frame = fits.open( Files[i] )[0].data
 
         if i == 0:
@@ -146,6 +145,18 @@ def Make_Cube( Files, ReadNoise, DarkCur, Bias = None, Flat = None, BPM = None )
         SNR[i, wherenans[0], wherenans[1]]  = 0.001
 
     return Cube, SNR
+
+def Return_Cubes( ArcInds, ObjInds, FileInfo, DarkCube, Bias, Flat, BPM ):
+
+    ReadNoise       = FileInfo.rdn[ArcInds] / FileInfo.gain[ArcInds]
+    DarkCur         = DarkCube[ArcInds] / FileInfo.gain[ArcInds]
+    ArcCube, ArcSNR = Make_Cube( FileInfo.File[ArcInds].values, ReadNoise.values, DarkCur.values, Bias = Bias )
+
+    ReadNoise       = FileInfo.rdn[ObjInds] / FileInfo.gain[ObjInds]
+    DarkCur         = DarkCube[ObjInds] / FileInfo.gain[ObjInds]
+    ObjCube, ObjSNR = Make_Cube( FileInfo.File[ObjInds].values, ReadNoise.values, DarkCur.values, Bias = Bias, Flat = Flat, BPM = BPM )
+
+    return ArcCube, ArcSNR, ObjCube, ObjSNR
         
 def Start_Trace( flatslice, percent ):
 
@@ -234,7 +245,7 @@ def Fit_Trace( Trace ):
 
     return FitTrace
 
-def Get_Trace( Flat, Cube, MedCut, Conf ):
+def Get_Trace( Flat, Cube, Conf ):
 
     orderstart            = -33
     orderzeros, ordervals = Find_Orders( Flat, orderstart )
@@ -247,7 +258,7 @@ def Get_Trace( Flat, Cube, MedCut, Conf ):
             plt.savefig( Conf.rdir + 'plots/prelimtrace.pdf' ); plt.show()
 
         meds      = [ np.median( Cube[i,:,:2048] ) for i in range( Cube.shape[0] ) ]
-        abovemed  = Cube[ np.where( meds >= np.percentile( meds, MedCut ) ) ]
+        abovemed  = Cube[ np.where( meds >= np.percentile( meds, Conf.MedCut ) ) ]
 
         trace    = Full_Trace( abovemed, orderzeros, orderstart )
         MedTrace = np.median( trace, axis = 0 )

@@ -12,10 +12,16 @@ class Configs():
         else:
             self.codedir = os.getenv("HOME") + '/Research/Codes/coudereduction'
 
-        self.PlotsOn     = False
         self.CalsDone    = True
         self.TraceDone   = True
-        self.ExtractDone = True
+        self.ExtractDone = False
+
+        self.PlotsOn     = False
+
+        self.DarkCurVal  = 0.0
+        self.MedCut      = 95.0
+
+        self.InfoFile    = 'headstrip.csv'
 
 Conf = Configs()
 
@@ -28,15 +34,11 @@ raw_input( 'If that isn\'t right ctrl-c outta this! Otherwise just hit enter.\n'
 
 os.chdir(Conf.dir)
 
-DarkCurVal = 0.0
+Fns.Header_Info( Conf.dir, Conf.InfoFile )
 
-InfoFile = 'headstrip.csv'
-Fns.Header_Info( Conf.dir, InfoFile )
+FileInfo = pd.read_csv( Conf.InfoFile )
 
-#FileInfo = readcol.readcol( InfoFile, fsep = ',', asRecArray = True )
-FileInfo = pd.read_csv( InfoFile )
-
-DarkCube = FileInfo.ExpTime * DarkCurVal
+DarkCube = FileInfo.ExpTime * Conf.DarkCurVal
 
 BiasInds = np.where( FileInfo.Type == 'zero' )[0]
 FlatInds = np.where( FileInfo.Type == 'flat' )[0]
@@ -47,25 +49,22 @@ SuperBias, FlatField = Fns.Basic_Cals( FileInfo.File[BiasInds].values, FileInfo.
 
 BPM = Fns.Make_BPM( SuperBias, FlatField, 99.9, Conf )
 
-RdNoise  = FileInfo.rdn[ArcInds] / FileInfo.gain[ArcInds]
-DarkCur  = DarkCube[ArcInds] / FileInfo.gain[ArcInds]
-ArcCube, ArcSNR = Fns.Make_Cube( FileInfo.File[ArcInds].values, RdNoise.values, DarkCur.values, Bias = SuperBias )
-#ArcCube, ArcSNR = Fns.Make_Cube( FileInfo.File[ArcInds].values, RdNoise.values, DarkCur.values )
+ArcCube, ArcSNR, ObjCube, ObjSNR = Fns.Return_Cubes( ArcInds, ObjInds, FileInfo, DarkCube, SuperBias, FlatField, BPM )
 
-RdNoise  = FileInfo.rdn[ObjInds] / FileInfo.gain[ObjInds]
-DarkCur  = DarkCube[ObjInds] / FileInfo.gain[ObjInds]
-ObjCube, ObjSNR = Fns.Make_Cube( FileInfo.File[ObjInds].values, RdNoise.values, DarkCur.values, Bias = SuperBias, Flat = FlatField, BPM = BPM )
-
-MedCut = 95.0
-MedTrace, FitTrace = Fns.Get_Trace( FlatField, ObjCube, MedCut, Conf )
+MedTrace, FitTrace = Fns.Get_Trace( FlatField, ObjCube, Conf )
 
 if Conf.ExtractDone:
     wspec     = pickle.load( open( Conf.rdir + 'extracted_wspec.pkl', 'rb' ) )
     sig_wspec = pickle.load( open( Conf.rdir + 'extracted_sigwspec.pkl', 'rb' ) )
+    spec      = pickle.load( open( Conf.rdir + 'extracted_spec.pkl', 'rb' ) )
+    sig_spec  = pickle.load( open( Conf.rdir + 'extracted_sigspec.pkl', 'rb' ) )
 else:
     wspec, sig_wspec = Fns.extractor( ArcCube, ArcSNR, FitTrace, quick = True, arc = True, nosub = True )
+    spec, sig_spec   = Fns.extractor( ObjCube, ObjSNR, FitTrace, quick = False, arc = False, nosub = False )
     pickle.dump( wspec, open( Conf.rdir + 'extracted_wspec.pkl', 'wb' ) )
     pickle.dump( sig_wspec, open( Conf.rdir + 'extracted_sigwspec.pkl', 'wb' ) )
+    pickle.dump( spec, open( Conf.rdir + 'extracted_spec.pkl', 'wb' ) )
+    pickle.dump( sig_spec, open( Conf.rdir + 'extracted_sigspec.pkl', 'wb' ) )
 
 wspec      = wspec[:,::-1,:]
 sig_wspec  = sig_wspec[:,::-1,:]
