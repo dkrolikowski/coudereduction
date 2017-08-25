@@ -1,4 +1,4 @@
-import glob, os, pdb, readcol, pickle
+import glob, os, pdb, readcol, pickle, mpyfit
 
 import matplotlib as mpl
 mpl.use('TkAgg')
@@ -285,126 +285,116 @@ def Get_Trace( Flat, Cube, Conf ):
 
     return MedTrace, FitTrace
 
-def extractor(cube,cube_snr,trace,quick=True,arc=False,nosub=True):
-    '''
-    Main code to turn data images into a series 1d-spectra (one per order)
-    Input:
-        cube: the datacube of image frames
-        cube_snr: corresponding SNR cube
-        trace: The order position trace on the ccd, computed previously 
+def Least( p, args ):
+    X, vals, err, func = args
+    if err != None:
+        dif = ( vals - func( X, p ) ) / err
+    else:
+        dif = vals - func( X, p )
+
+    return dif.ravel()
+
+def OrderModel( X, p, return_full = False ):
+    x, y = X
     
-    Options:
-        quick: if True, does a simple baground minimum subtractions and skips slow fitting process,
-                good for quicklook or testing the pipelines other functions. If False, full fit is done.
-        arc: set to True for extracting arc frames, should also set quick to True
-        nosub: if True, no background subtraction carried out at all, mainly a diagnostic tool
+    ##order trace residual (parabola)
+    means  = p[2] * x ** 2.0 + p[1] * x + p[0]
     
-    Outputs: 
-        flux: cube (frames,orders,pixel) containing the extracted raw spectra
-        error: corresponding uncertainties (same shape)
-    '''
-    flux  = np.zeros((cube.shape[0],trace.shape[0],trace.shape[1]))
-    error = flux*0.0
-    ##go frame by frame
-    for frm in range(cube.shape[0]):
-        #frm=-1 ##set a frame here for testing
+    ##peak shape curve
+    peaks  = p[5] * x ** 2.0 + p[4] * x + p[3]
+    
+    ##sigma curve
+    sigmas = p[9] * x ** 3.0 + p[8] * x ** 2.0 + p[7] * x + p[6]
+    
+    ##actual model
+    model  = peaks * np.exp( - ( y - means ) ** 2.0 / ( 2.0 * sigmas ** 2.0 ) ) + p[10]
+    
+    if return_full == False: return model
+    else: return model, means, peaks, sigmas
+
+def GaussModel( X, p ):
+    x = X
+
+    model = p[0] * np.exp( - ( x - p[1] ) ** 2.0 / ( 2.0 * p[2] ** 2.0 ) ) + p[3]
+
+    return model
+
+def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
+
+    flux  = np.zeros( ( cube.shape[0], trace.shape[0], trace.shape[1] ) )
+    error = flux * 0.0
+
+    for frm in range( cube.shape[0] ):
         print "Extracting Frame " + str(frm+1) +" out of " + str(cube.shape[0])
         thisfrm = cube[frm,:,:]
         thissnr = cube_snr[frm,:,:]
         
-        ## go order by order 
-        for ord in range(trace.shape[0]):
-            #ord=21 set an order here for testing
+        for ord in range( trace.shape[0] ):
 
-            ##fix the order trace shape first, to account for random pixel shifts 
-            ###!!!DANNY this could really be moved to the trace functions as an additional step
-            ##rather than doing it multiple times here!!!!!
-            # tracepars = np.polyfit(range(trace.shape[1]),trace[ord,:],2)
-            # tracepoly = np.polyval(tracepars,range(trace.shape[1]))
-            # trace[ord] = tracepoly
-            
-            #now get the whole trace in a block
-            tblock = np.zeros((trace.shape[1],16))
+            tblock = np.zeros( ( trace.shape[1], 16 ) )
             tsnr   = tblock.copy()
-            x      = np.arange(tblock.shape[0])
-            y      = np.arange(tblock.shape[1])
-            xx,yy  = np.meshgrid(x,y)
-            xx     = xx.T
-            yy     = yy.T
-            ##cut out a region around the trace for this order
-            for pix in range(trace.shape[1]):
-                low  = int(trace[ord,pix]) - 8
-                high = int(trace[ord,pix]) + 8
-                if low < 0:
-                    high -= low
-                    low   = 0
+            x, y   = [ c.T for c in np.meshgrid( np.arange( tblock.shape[0] ), np.arange( tblock.shape[1] ) ) ]
+
+            for pix in range( trace.shape[1] ):
+                low           = int(trace[ord,pix]) - 8
+                high          = int(trace[ord,pix]) + 8
                 tblock[pix,:] = thisfrm[low:high,pix]
                 tsnr[pix,:]   = thissnr[low:high,pix]
-##a diagnostic plot for testing
-#             plt.imshow(thisfrm[trace[ord,1350]-8:trace[ord,1350]+8,1330:1360],aspect='auto')
-#             plt.plot(range(30),trace[ord,1330:1360]-trace[ord,1350]+9)
-#             test = thisfrm[trace[ord,1330:1360]
-#             pdb.set_trace()
 
-            ##if not running the quick mode
             if (quick == False) & (arc == False):   
 
                 ##clean obvious high outliers 
-                trybad = np.where(tblock > 10*np.median(tblock))
-                tsnr[trybad[0],trybad[1]] = 0.000001
-                tblock[trybad[0],trybad[1]] = np.median(tblock)
-                err = np.absolute(tblock/(tsnr))
+                toohigh         = np.where( tblock > 10.0 * np.median( tblock ) )
+                tblock[toohigh] = np.median( tblock )
+                tsnr[toohigh]   = 0.000001
+                tnoise          = np.absolute( tblock / ( tsnr ) )
 
                 ##clean zero values (often due to chip artifacts that aren't caught)
-                badpoints = np.where(tblock <= 0)
-                tblock[badpoints[0],badpoints[1]] = np.median(tblock)
-                err[badpoints[0],badpoints[1]] = np.median(tblock)*2.0
-                tsnr[badpoints[0],badpoints[1]] = 0.00001                
-                
-                ##set up a fit of the order position on the trace block
-                fa  = {'xx':xx, 'yy':yy, 'image':tblock,'err':err}
-                ##initialize the normalizations paramaters to the centre values of tblock
-                p0  = np.array([np.argmax(tblock[0,:]),0.0,0.0,np.median(tblock[:,np.argmax(tblock[1000,:])]),2.0,np.percentile(tblock,2),0.0,0.0,0.0,0.0,0.0]) 
-                thisfit2d    = mpfit(order_resid, p0, functkw=fa,quiet=True) 
-                if thisfit2d.status == -16: 
-                    print 'mpfit for order fialed!, not sure what happened???!!!!???'
+                toolow         = np.where( tblock <= 0 )
+                tblock[toolow] = np.median( tblock )
+                tsnr[toolow]   = 0.00001
+                tnoise[toolow] = np.median( tblock ) * 2.0
+
+                tnoise[tnoise==0.0] = 0.00001
+
+                p0             = np.zeros( 11 )
+                p0[[0,3,6,10]] = [ np.argmax( tblock[0,:] ), np.median( tblock[:,np.argmax( tblock[1000,:] )] ), 2.0, np.percentile( tblock, 2.0 ) ]
+
+                ordpars, ordres = mpyfit.fit( Least, p0, ( (x,y), tblock, tnoise, OrderModel ) )
+
+                if ordres['status'] == -16:
+                    print 'mpyfit for this order failed?'
                     pdb.set_trace()
-                ##the best fit parameters
-                orderpars    = thisfit2d.params
-                ##the corresponding best model  
-                bestmod,besttrace,bestresid,bestpeak,bestsigmas    = order_resid(orderpars,xx=xx,yy=yy,image=tblock,err=tblock/tsnr,model=True)
-                
+
+                bestmod, besttrace, bestpeak, bestsigmas = OrderModel( (x,y), ordpars, return_full = True )
+                bestresid                                = ( tblock - bestmod ) / tnoise
+
                 ##now remove points that are obvious outliers from the best model
-                cutresid    = np.percentile(bestresid.flatten(),99.99)
-                badcut      = np.where(bestresid > cutresid)
-                tblock[badcut[0],badcut[1]] = np.median(tblock)
-                tsnr[badcut[0],badcut[1]]   = 0.00001
-                thistrace   = besttrace[:,0].copy()
-                thispeak    = bestpeak[:,0].copy()
-                thissigma   = bestsigmas[:,0].copy()
-                peakshape   = np.sum(bestmod,axis=1)
-                block_bg    = orderpars[5]
-                block_sigma = orderpars[4]
+                cutresid       = np.percentile( bestresid.flatten() , 99.99 )
+                badcut         = np.where( bestresid > cutresid )
+                tblock[badcut] = np.median( tblock )
+                tsnr[badcut]   = 0.00001
+                thistrace      = besttrace[:,0].copy()
+                thispeak       = bestpeak[:,0].copy()
+                thissigma      = bestsigmas[:,0].copy()
+                peakshape      = np.sum( bestmod, axis = 1 )
+                block_bg       = ordpars[5]
+                block_sigma    = ordpars[4]
 
-            
-            ## now that a starting order shape fit is done, can go pixel-by-pixel across the order
-            ## and do a more detailed fit
-            
-            ##a quick print update so I don't get antsy            
             print "Extracting Ord " + str(ord+1) +" out of " + str(trace.shape[0]) + " for frame " + str(frm+1) + " of " + str(cube.shape[0])
-
 
             savesigma = np.zeros(trace.shape[1])
             savepeak  = np.zeros(trace.shape[1])
             savebg    = np.zeros(trace.shape[1])
             savespot  = np.zeros(trace.shape[1])
+            
             #go pixel-by-pixel along the order
             for pix in range(trace.shape[1]):
-                ##pix = 1199 #set a pixel here for testing
                 slice     = tblock[pix,:]
                 slice_snr = tsnr[pix,:]
                 thisx     = np.arange(len(slice))
-                snoise = np.absolute(slice/slice_snr)        
+                snoise    = np.absolute(slice/slice_snr)
+                snoise[snoise==0.0] = 0.00001
                 qwe       = np.where(slice_snr < 0.0)[0]
                 if len(qwe) >= 1: 
                     print 'Slice SNR is bad, bugshoot!!!'
@@ -418,43 +408,33 @@ def extractor(cube,cube_snr,trace,quick=True,arc=False,nosub=True):
 
                     ##set up an mpfit of the order profile
                     ##initial parameters: peak height, peak centroid and peak width initalized from global order fit above, 
-                    p0 = np.array([tpeak,tspot,tsigma,block_bg])  
+                    p0        = np.array( [ tpeak, tspot, tsigma, block_bg ] )
+                    parinfo   = [ { 'limits': ( None, None ) } for i in range( len(p0) ) ]
+                    parinfo[1]['limits'] = ( p0[1] - 1.0, p0[1] + 1.0 )
+                    parinfo[2]['limits'] = ( p0[2] - 1.0, p0[2] + 2.0 )
 
-                    ##limit some parameters, e.g. the width and centroid locations shoulndt travel far
-                    ###this is mostly needed for the case of low-snr data where the peak is hard to pick out  
-                    parinfo = [{'fixed':0, 'limited':[0,0], 'limits':[0.,0.]} for i in range(4)]
-                    parinfo[1]['fixed']   = 0
-                    parinfo[2]['fixed']   = 0
-                    parinfo[1]['limited'] =[1,1]
-                    parinfo[1]['limits']  =[p0[1]-1.0,p0[1]+1.0]
-                    parinfo[2]['limited'] = [1,1]
-                    parinfo[2]['limits']  = [p0[2]-1.0,p0[2]+2.0]
-                    fa = {'x':thisx, 'y':slice, 'err':slice/slice_snr}
+                    slicepars, sliceres  = mpyfit.fit( Least, p0, ( thisx, slice, snoise, GaussModel ), parinfo = parinfo )
 
-                    ##the call to the fitter
-                    thisfit    = mpfit(profile_resid, p0, functkw=fa,quiet=True,parinfo=parinfo)    
-                    #best fit parameters, save them
-                    fitpars    = thisfit.params
-                    savesigma[pix] = fitpars[2]
-                    savespot[pix]  = fitpars[1]
-                    savepeak[pix]  = fitpars[0]
-                    savebg[pix]         = fitpars[3]
-                    bg         = fitpars[3]
+                    savesigma[pix] = slicepars[2]
+                    savespot[pix]  = slicepars[1]
+                    savepeak[pix]  = slicepars[0]
+                    savebg[pix]    = slicepars[3]
+                    bg     = slicepars[3]
 
                     #best model and residuals
-                    resids = profile_resid(fitpars,x=thisx,y=slice,err=slice/slice_snr,model=False,fjac=None)[1]
-                    themod = profile_resid(fitpars,x=thisx,y=slice,err=slice/slice_snr,model=True,fjac=None)
+                    themod = SliceModel( thisx, slicepars )
+                    resids = ( slice - themod ) / snoise
 
                     ##detect outlier where residuals are really large
                     ##the cut value might need more thought 
-                    bads = np.where(np.absolute(resids)>20)[0]
+                    bads   = np.where( np.absolute( resids ) > 20 )[0]
                     slice_snr[bads] = 0.0001 ##set their SNR to effective zero
-                    if len(bads) > 3: slice_snr = slice_snr*0.000+0.0001 ##if there are three bad points of more, kill the while pixel position
+                    if len(bads) > 3: slice_snr = slice_snr*0.000+0.0001 ##if there are three bad points of more, kill the whole pixel position
 
                 ## if quick is true, simple minimum background
-                if quick   == True: bg = slice*0.0 + np.min(np.absolute(slice))
-                if nosub   == True: bg = slice*0.0 ##case for no subtraction at all (e.g., arcs)
-                cslice  = slice - bg ## subtract the background, whatever the case was
+                if quick   == True: bg = slice * 0.0 + np.min( np.absolute( slice ) )
+                if nosub   == True: bg = slice * 0.0 ##case for no subtraction at all (e.g., arcs)
+                cslice     = slice - bg ## subtract the background, whatever the case was
 
                 ##sum up across the order, just a SNR weighted mean
                 flux[frm,ord,pix]  = np.sum(slice_snr*cslice)/np.sum(slice_snr)
@@ -478,178 +458,24 @@ def extractor(cube,cube_snr,trace,quick=True,arc=False,nosub=True):
 
     return flux,error
 
-def profile_resid(p,x=None,y=None,err=None,model=False,fjac=None):
-    '''
-    mpfit style function of the order profile model, for doing the detailed extraction and 
-    background removal
-
-    The model is a gaussian with a constant level, 
-
-    improvement idea: add a linear background across order? might not be needed
-
-    if model=True, returns model to user, otherwise returns residuals for mpfit
-    '''
-    mmm = p[0]*np.exp(-(x-p[1])**2/2/p[2]**2)+ p[3]
-    resid = (y-mmm)/err
-    status=0
-    #pdb.set_trace()
-    if model == True: return mmm 
-    if model == False: return [status,resid]
-
-def order_resid(p,xx=None,yy=None,image=None,err=None,model=False,fjac=None):
-    '''
-    Function in the mpfit style to compute a model order shape 
-    its a gaussian at each pixel row, with peak heights, positions, and widths varying parabolically
-
-    p is the input parameters
-
-    returns residuals for mpfit unless model=True is set, then it returns information for the user to eyeball things
-    '''
-    ##order trace residual (parabola)
-    mvect  = p[2]*xx**2 + p[1]*xx + p[0]
-    ##peak shape curve
-    peak   = p[3] + p[6]*xx + p[7]*xx**2
-    ##sigma curve
-    sigmas = p[4]+p[8]*xx**1 + p[9]*xx**2 + p[10]*xx**3
-    ##actual model
-    mmm    = peak*np.exp(-(yy-mvect)**2/2/sigmas**2) + p[5]
-    resid_2d = (image-mmm)/err
-    resid    = resid_2d.flatten()
-    status=0
-    #pdb.set_trace()
-    if model == True: return mmm,mvect,resid_2d,peak,sigmas
-    if model == False: return [status,resid]
-
-'''def Order_Model_2D( X, *p ):
-
-    rav = True
-    
-    if not np.isscalar( p[0] ):
-        p   = p[0]
-        rav = False
-    
-    x, y = X
-        
-    mean  = p[2] * x ** 2.0 + p[1] * x + p[0]
-    peak  = p[5] * x ** 2.0 + p[4] * x + p[3]
-    sigma = p[9] * x ** 3.0 + p[8] * x ** 2.0 + p[7] * x+ p[6]
-
-    model = peak * np.exp( - ( y - mean ) ** 2.0 / ( 2.0 * sigma ** 2.0 ) ) + p[10]
-
-    if rav == False:
-        return model, mean, peak, sigma
-    else:
-        return model.ravel()
-
-def Order_Model_Profile( X, *p ):
-
-    model = p[0] * np.exp( - ( X - p[1] ) ** 2.0 / ( 2.0 * p[2] ** 2.0 ) ) + p[3]
-
-    return model
-
-def Extraction( Cube, Cube_SNR, Trace, quick = True, arc = False, nosub = True ):
-
-    if ExtractDone == True:
-        Spec_Cube = pickle.load( open( rdir + 'extracted_spec.pkl', 'rb' ) )
-        Spec_Sig  = pickle.load( open( rdir + 'extracted_specsig.pkl', 'rb' ) )
-
-    elif ExtractDone == False:
-        Flux  = np.zeros( ( Cube.shape[0], Trace.shape[0], Trace.shape[1] ) )
-        Error = np.zeros( ( Cube.shape[0], Trace.shape[0], Trace.shape[1] ) )
-
-        for frmi in range( Cube.shape[0] ):
-            print "Extracting Frame # " + str( frame + 1 ) + ' out of ' + str( Cube.shape[0] )
-
-            Frame      = Cube[ frmi, :, : ]
-            FrameSNR   = Cube_SNR[ frmi, :, : ]
-
-            for ord in range( Trace.shape[0] ):
-                block = np.zeros( ( Trace.shape[1], 16 ) )
-                snr   = block.copy()
-                x, y  = [ c.T for c in np.meshgrid( np.arange( block.shape[0] ), np.arange( block.shape[1] ) ) ]
-
-                for pix in range( Trace.shape[1] ):
-                    block[pix,:] = Frame[np.round(Trace[ord,pix])-8:np.round(Trace[ord,pix])+8,pix]
-                    snr[pix,:]   = FrameSNR[np.round(Trace[ord,pix])-8:np.round(Trace[ord,pix])+8,pix]
-
-                if quick == False and arc == False:
-
-                    # Get rid of obviously high outliers
-                    toohigh        = np.where( block > 10.0 * np.median( block ) )
-                    block[toohigh] = np.median( block )
-                    snr[toohigh]   = 1.0e-6
-                    err            = np.absolute( block / snr )
-
-                    # Clean zero values
-                    toolow        = np.where( block <= 0.0 )
-                    block[toolow] = np.median( block )
-                    snr[toolow]   = 1.0e-5
-                    err[toolow]   = 2.0 * np.median( block )
-
-                    # Set up a fit of the order position on the block
-                    pguess = np.array( [ np.argmax( block[0,:] ), 0.0, 0.0,
-                                    np.median( block[:,np.argmax( block[1000,:] )] ), 0.0, 0.0,
-                                    2.0, 0.0, 0.0, 0.0, np.percentile( block, 2 ) ] )
-
-                    params, pcov = optim.curve_fit( Order_Model_2D, ( x, y ), block.ravel(), p0 = pguess, sigma = err.ravel() )
-
-                    model, mean, peak, sigma = Order_Model_2D( ( x, y ), params )
-                    resids = ( block - model ) / err
-
-                    residcut      = np.percentile( resids, 99.99 )
-                    badcut        = np.where( resids > residcut )
-                    block[badcut] = np.median( block )
-                    snr[badcut]   = 1.0e-5
-
-                    slowtrace     = mean[:,0].copy()
-                    slowpeak      = peak[:,0].copy()
-                    slowsigma     = sigma[:,0].copy()
-                    slowshape     = np.sum( model, axis = 1 )
-                    blockbg       = params[10]
-                    blocksigma    = params[5]
-
-                #print "Extracting Ord " + str(ord+1) +" out of " + str(trace.shape[0]) + " for frame " + str(frm+1) + " of " + str(cube.shape[0])
-
-                savesigma = np.zeros( Trace.shape[1] )
-                savepeak  = np.zeros( Trace.shape[1] )
-                savebg    = np.zeros( Trace.shape[1] )
-                savespot  = np.zeros( Trace.shape[1] )
-
-                for pix in range( Trace.shape[1] ):
-
-                    sliceval   = block[pix,:]
-                    slicesnr   = snr[pix,:]
-                    slicex     = np.arange( len( sliceval ) )
-                    slicenoise = np.absolute( sliceval / slicesnr )
-                    negsnr     = np.where( slicesnr < 0.0 )[0]
-                    if len( negsnr ) >= 1:
-                        pdb.set_trace()'''
-
 ########## WAVELENGTH CALIBRATION FUNCTIONS AND WHAT NOT ##########
 
-def Gaussian( x, A, mean, sigma, const ):
-    '''
-    Returns a gaussian function for fitting purposes with scipy.optimize.curve_fit
-    '''
-    
-    gauss = A * np.exp( - ( x - mean ) ** 2.0 / ( 2.0 * sigma ** 2 ) ) + const
-
-    return gauss
-
-def Smooth_Spec( spec ):
-    smoothed = spec.copy()
-    normfilt = spec.copy()
+def Smooth_Spec( spec, specsig ):
+    smoothed  = spec.copy()
+    normfilt  = spec.copy()
+    smoothsig = specsig.copy()
     
     for i in range( spec.shape[0] ):
         for j in range( spec.shape[1] ):
-            cutspec      = spec[i,j].copy()
-            cut          = spec[i,j] >= np.percentile( spec[i,j], 90.0 )
-            cutspec[cut] = np.percentile( spec[i,j], 75.0 )
-            filtered     = signal.savgol_filter( cutspec, 101, 3 )
-            smoothed[i,j] /= filtered
-            normfilt[i,j]  = filtered / np.max( filtered )
+            cutspec         = spec[i,j].copy()
+            cut             = spec[i,j] >= np.percentile( spec[i,j], 90.0 )
+            cutspec[cut]    = np.percentile( spec[i,j], 75.0 )
+            filtered        = signal.savgol_filter( cutspec, 101, 3 )
+            smoothed[i,j]  /= filtered
+            smoothsig[i,j] /= filtered
+            normfilt[i,j]   = filtered / np.max( filtered )
 
-    return smoothed, normfilt
+    return smoothed, smoothsig, normfilt
 
 def Get_Shift( cube, comp ):
     
@@ -667,21 +493,23 @@ def Get_Shift( cube, comp ):
 
     return shift
 
-def Get_WavSol( Cube, Conf, plots = True, Orders = 'All' ):
+def Get_WavSol( Cube, CubeSig, Conf, plots = True, Frames = 'All', Orders = 'All' ):
     
     if not os.path.exists( Conf.rdir + 'wavcal' ):
         os.mkdir( Conf.rdir + 'wavcal' )
-    
-    if Orders == 'All':
-        orderloop = range( Cube.shape[1] )
-    else:
-        orderloop = Orders
+
+    if Frames == 'All': frameloop = range( Cube.shape[0] )
+    else:               frameloop = Frames
+
+    if Orders == 'All': orderloop = range( Cube.shape[1] )
+    else:               orderloop = Orders
 
     roughsol = pickle.load( open( Conf.codedir + 'prelim_wsol.pkl', 'rb' ) )
     compspec = pickle.load( open( Conf.codedir + 'normfilt.pkl', 'rb' ) )
 
-    smoothcube, filtcube = Smooth_Spec( Cube )
-    orderdif             = Get_Shift( filtcube[0], compspec )
+    smoothcube, smoothsig, filtcube = Smooth_Spec( Cube, CubeSig )
+
+    orderdif = Get_Shift( filtcube[0], compspec )
 
     print orderdif
     if orderdif < 0 or orderdif + Cube.shape[0] > roughsol.shape[0]:
@@ -698,8 +526,7 @@ def Get_WavSol( Cube, Conf, plots = True, Orders = 'All' ):
     THAR['logspec'] = np.log10( THAR['spec'] )
     THAR['lines']   = pd.read_table( Conf.codedir + 'ThAr_list.txt', delim_whitespace = True ).wav.values
     
-    #for frame in range( Cube.shape[0] ):
-    for frame in range(1):
+    for frame in frameloop:
         framepath = Conf.rdir + 'wavcal/arcframe_' + str( frame )
         if not os.path.exists( framepath ):
             os.mkdir( framepath )
@@ -711,14 +538,15 @@ def Get_WavSol( Cube, Conf, plots = True, Orders = 'All' ):
                 for f in glob.glob( orderpath + '/*' ): os.remove(f)
             else:
                 os.mkdir( orderpath )
-            
+
             arcspec    = smoothcube[frame,order,:]
+            arcsigma   = smoothsig[frame,order,:]
             prelimsol  = roughsol[order+orderdif,:]
             
             logarcspec = np.log10( arcspec - np.min( arcspec ) + 1.0 )
             logarcspec = logarcspec - np.min( logarcspec )
 
-            wavsol, params, keeps, rejs, flag = Fit_WavSol( prelimsol, arcspec, THAR['lines'], orderpath, THAR, plots = plots )
+            wavsol, params, keeps, rejs, flag = Fit_WavSol( prelimsol, arcspec, arcsigma, THAR['lines'], orderpath, THAR, plots = plots )
             
             if flag:
                 badorders.append(order)
@@ -743,10 +571,10 @@ def Get_WavSol( Cube, Conf, plots = True, Orders = 'All' ):
     print badorders
     return FullWavSol, FullParams
 
-def Find_Peaks( wav, spec, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
+def Find_Peaks( wav, spec, specsig, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
         
     # Find peaks using the cwt routine from scipy.signal
-    peaks = signal.find_peaks_cwt( spec, np.arange( 2, 4 ), min_snr = peaksnr, noise_perc = 20 )
+    peaks = signal.find_peaks_cwt( spec, np.arange( 2, 4 ), min_snr = peaksnr, noise_perc = 25.0 )
     
     # Offset from start/end of spectrum by some number of pixels
     peaks = peaks[ (peaks > pwidth) & (peaks < len(spec) - pwidth) ]
@@ -758,14 +586,32 @@ def Find_Peaks( wav, spec, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
         
         xi   = wav[peak - pwidth:peak + pwidth]
         yi   = spec[peak - pwidth:peak + pwidth]
+        sigi = specsig[peak - pwidth:peak + pwidth]
         inds = np.arange( len(xi), dtype = float )
         
-        pguess   = [ yi[9], np.median( inds ), 0.9, np.median( spec ) ]
-        lowerbds = [ 4.0 * pguess[3], pguess[1] - 2.0, 0.3, 0.0  ]
-        upperbds = [ np.inf, pguess[1] + 2.0, 1.5, np.inf ]
+        p0       = [ yi[9], np.median( inds ), 0.9, np.median( spec ) ]
+        lowerbds = [ p0[3], p0[1] - 2.0, 0.3, 0.0  ]
+        upperbds = [ None, p0[1] + 2.0, 1.5, None ]
+        parinfo  = [ { 'limits': ( lowerbds[i], upperbds[i] ) } for i in range( len(p0) ) ]
 
+        print p0
+        # Delete
         try:
-            params, pcov = optim.curve_fit( Gaussian, inds, yi, p0 = pguess, bounds = (lowerbds,upperbds) )
+            params, res = mpyfit.fit( Least, p0, ( inds, yi, sigi, GaussModel ), parinfo = parinfo )
+            fitx = np.linspace( inds.min(), inds.max(), 1000 )
+            plt.step( inds, yi, 'k', where = 'mid' )
+            plt.plot( fitx, GaussModel(fitx,params), 'r-' )
+            plt.errorbar( inds, yi, yerr = sigi, fmt = 'none' )
+            plt.title( str(peak) )
+            plt.show()
+
+        except RuntimeError:
+            print 'RuntimeError'
+
+        pdb.set_trace()
+        
+        try:
+            params, res = mpyfit.fit( Least, p0, ( inds, yi, None, GaussModel ), parinfo = parinfo )
             
             pixval  = peak - pwidth + params[1]
             pixcent = np.append( pixcent, pixval )
@@ -794,11 +640,11 @@ def Find_Peaks( wav, spec, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
 
     return pixcent, wavcent
 
-def Fit_WavSol( wav, spec, THARcat, path, THAR, snr = 5, minsep = 0.5, plots = True ):
+def Fit_WavSol( wav, spec, specsig, THARcat, path, THAR, snr = 5, minsep = 0.5, plots = True ):
     
     wavsol = np.zeros( len(spec) )
     
-    pixcent, wavcent = Find_Peaks( wav, spec, peaksnr = snr, minsep = minsep )
+    pixcent, wavcent = Find_Peaks( wav, spec, specsig, peaksnr = snr, minsep = minsep )
     
     keeps = { 'pix': np.array([]), 'wav': np.array([]), 'line': np.array([]) }
     rejs  = { 'pix': np.array([]), 'wav': np.array([]), 'line': np.array([]) }

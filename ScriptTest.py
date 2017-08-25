@@ -14,7 +14,7 @@ class Configs():
 
         self.CalsDone    = True
         self.TraceDone   = True
-        self.ExtractDone = False
+        self.ExtractDone = True
 
         self.PlotsOn     = False
 
@@ -56,13 +56,13 @@ MedTrace, FitTrace = Fns.Get_Trace( FlatField, ObjCube, Conf )
 if Conf.ExtractDone:
     wspec     = pickle.load( open( Conf.rdir + 'extracted_wspec.pkl', 'rb' ) )
     sig_wspec = pickle.load( open( Conf.rdir + 'extracted_sigwspec.pkl', 'rb' ) )
-    spec      = pickle.load( open( Conf.rdir + 'extracted_spec.pkl', 'rb' ) )
-    sig_spec  = pickle.load( open( Conf.rdir + 'extracted_sigspec.pkl', 'rb' ) )
+    #spec      = pickle.load( open( Conf.rdir + 'extracted_spec.pkl', 'rb' ) )
+    #sig_spec  = pickle.load( open( Conf.rdir + 'extracted_sigspec.pkl', 'rb' ) )
 else:
-    wspec, sig_wspec = Fns.extractor( ArcCube, ArcSNR, FitTrace, quick = True, arc = True, nosub = True )
-    spec, sig_spec   = Fns.extractor( ObjCube, ObjSNR, FitTrace, quick = False, arc = False, nosub = False )
-    pickle.dump( wspec, open( Conf.rdir + 'extracted_wspec.pkl', 'wb' ) )
-    pickle.dump( sig_wspec, open( Conf.rdir + 'extracted_sigwspec.pkl', 'wb' ) )
+    #wspec, sig_wspec = Fns.Extractor( ArcCube, ArcSNR, FitTrace, quick = True, arc = True, nosub = True )
+    spec, sig_spec   = Fns.Extractor( ObjCube, ObjSNR, FitTrace, quick = False, arc = False, nosub = False )
+    #pickle.dump( wspec, open( Conf.rdir + 'extracted_wspec.pkl', 'wb' ) )
+    #pickle.dump( sig_wspec, open( Conf.rdir + 'extracted_sigwspec.pkl', 'wb' ) )
     pickle.dump( spec, open( Conf.rdir + 'extracted_spec.pkl', 'wb' ) )
     pickle.dump( sig_spec, open( Conf.rdir + 'extracted_sigspec.pkl', 'wb' ) )
 
@@ -71,6 +71,6 @@ sig_wspec  = sig_wspec[:,::-1,:]
 # spec       = spec[:,::-1,:]
 # sig_spec   = sig_spec[:,::-1,:]
 
-sols, params = Fns.Get_WavSol( wspec, Conf, Orders = [0] )
+sols, params = Fns.Get_WavSol( wspec, sig_wspec, Conf, Frames = [0], Orders = [42] )
 #pickle.dump( sols, open( rdir + 'wavsol.pkl', 'wb' ) )
 #pickle.dump( params, open( rdir + 'wavparams.pkl', 'wb' ) )
