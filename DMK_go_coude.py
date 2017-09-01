@@ -677,14 +677,13 @@ def Fit_WavSol( wav, spec, specsig, THARcat, path, THAR, snr = 5, minsep = 0.5, 
         wavresids  = ptsfromfit - keeps['line']
         velresids  = wavresids / keeps['line'] * 3e5
         resids     = { 'wav': wavresids, 'vel': velresids }
+        medabsdev  = np.median( np.abs( np.abs( resids['wav'] ) - np.median( np.abs( resids['wav'] ) ) ) )
         
         velcut = np.sum( np.abs(resids['vel']) >= 0.2 )
-        torej  = np.abs( resids['wav'] ) >= cutoff * np.median( np.abs( resids['wav'] ) )
+        torej  = np.abs( resids['wav'] ) >= cutoff * medabsdev
         tokeep = np.logical_not( torej )
         numrej = np.sum( torej )
-
-        pdb.set_trace()
-
+        
         # velcut     = np.sum( np.abs(resids['vel']) >= 0.2 )
         # gtcut      = np.abs( resids['wav'] ) >= cutoff * np.median( np.abs( resids['wav'] ) )
         # numrej     = np.sum( gtcut )
@@ -693,7 +692,7 @@ def Fit_WavSol( wav, spec, specsig, THARcat, path, THAR, snr = 5, minsep = 0.5, 
         # torej[big] = True
         # tokeep     = np.logical_not( torej )
         
-        if velcut > 0:
+        if velcut > 0 and numrej != len(torej):
             if numrej > 0:
                 if plots:
                     plotname = path + '/resids_round_' + str(ploti) + '.pdf'
@@ -743,10 +742,17 @@ def Fit_WavSol( wav, spec, specsig, THARcat, path, THAR, snr = 5, minsep = 0.5, 
                     Plot_WavSol_Resids( resids, keeps['line'], cutoff, plotname )
                 break
 
+        elif numrej == len(torej):
+            if plots:
+                plotname = path + '/resids_round_' + str(ploti) + '.pdf'
+                Plot_WavSol_Resids( resids, keeps['line'], cutoff, plotname, toreject = torej )
+            flag = True
+            dofit = False            
+
         else:
             if plots:
                 plotname = path + '/resids_round_' + str(ploti) + '.pdf'
-                Plot_WavSol_Resids( resids, keeps['line'], cutoff, plotname )
+                Plot_WavSol_Resids( resids, keeps['line'], cutoff, plotname, tokeep = tokeep )
             flag = False
             dofit = False
             
@@ -755,6 +761,9 @@ def Fit_WavSol( wav, spec, specsig, THARcat, path, THAR, snr = 5, minsep = 0.5, 
     return wavsol, wavparams, keeps, rejs, flag
 
 def Plot_WavSol_Resids( resids, lines, cutoff, savename, tokeep = None, toreject = None ):
+
+    wavmad = np.median( np.abs( np.abs( resids['wav'] ) - np.median( np.abs( resids['wav'] ) ) ) )
+    velmad = np.median( np.abs( np.abs( resids['vel'] ) - np.median( np.abs( resids['vel'] ) ) ) )
     
     plt.clf()
     fig, (wavax, velax) = plt.subplots( 2, 1, sharex = 'all' )
@@ -764,6 +773,10 @@ def Plot_WavSol_Resids( resids, lines, cutoff, savename, tokeep = None, toreject
         wavax.plot( lines, resids['wav'], 'ko', mfc = 'none' )
         velax.plot( lines, resids['vel'], 'ko', mfc = 'none' )
         fig.suptitle( 'Lines Used: ' + str(lines.size) + ', Cutoff: ' + str(cutoff * 0.67449) + ' $\sigma$' )
+    elif tokeep == None:
+        wavax.plot( lines, resids['wav'], 'kx', mfc = 'none' )
+        velax.plot( lines, resids['vel'], 'kx', mfc = 'none' )
+        fig.suptitle( 'Lines Used: ' + str(lines.size) + ', Cutoff: ' + str(cutoff * 0.67449) + ' $\sigma$' )
     else:
         wavax.plot( lines[tokeep], resids['wav'][tokeep], 'ko', mfc = 'none' )
         wavax.plot( lines[toreject], resids['wav'][toreject], 'kx' )
@@ -772,8 +785,9 @@ def Plot_WavSol_Resids( resids, lines, cutoff, savename, tokeep = None, toreject
         fig.suptitle( 'Lines Used: ' + str(lines[tokeep].size) + ', Lines Rej: ' + str(lines[toreject].size) 
                      + ', Cutoff: ' + str(cutoff * 0.67449) +  ' $\sigma$' )
     for x in [ -cutoff, cutoff ]:
-        wavax.axhline( y = x * np.median( np.abs( resids['wav'] ) ), color = 'r', ls = '--' )
-        velax.axhline( y = x * np.median( np.abs( resids['vel'] ) ), color = 'r', ls = '--' )
+        wavax.axhline( y = x * wavmad, color = 'r', ls = '--' )
+        velax.axhline( y = x * velmad, color = 'r', ls = '--' )
+        
     wavax.set_ylabel( 'Resids ($\AA$)' )
     velax.set_ylabel( 'Resids (km/s)' )
     wavax.yaxis.set_label_position("right"); velax.yaxis.set_label_position("right")

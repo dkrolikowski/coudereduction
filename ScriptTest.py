@@ -5,12 +5,9 @@ import os, readcol, pickle, pdb
 
 class Configs():
     def __init__( self ):
-        self.dir  = os.getenv("HOME") + '/Google Drive/YMG/coude_data/20161114/'
-        self.rdir = self.dir + 'reduction/'
-        if os.getenv("HOME").split('/')[-1] == 'dmk2347':
-            self.codedir = os.getenv("HOME") + '/codes/coudereduction/'
-        else:
-            self.codedir = os.getenv("HOME") + '/Research/Codes/coudereduction'
+        self.dir     = os.getenv("HOME") + '/Google Drive/YMG/coude_data/20161114/'
+        self.rdir    = self.dir + 'reduction/'
+        self.codedir = os.getenv("HOME") + '/codes/coudereduction/'
 
         self.CalsDone    = True
         self.TraceDone   = True
@@ -73,5 +70,5 @@ sig_wspec  = sig_wspec[:,::-1,:]
 spec       = spec[:,::-1,:]
 sig_spec   = sig_spec[:,::-1,:]
 
-arcwavsol = Fns.Get_WavSol( wspec, sig_wspec, Conf, Frames = [0], Orders = [0] )
+arcwavsol = Fns.Get_WavSol( wspec, sig_wspec, Conf )
 objwavsol = Fns.Interpolate_Obj_WavSol( arcwavsol, FileInfo, ArcInds, ObjInds, Conf )
