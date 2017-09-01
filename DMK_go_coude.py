@@ -422,7 +422,7 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
                     bg     = slicepars[3]
 
                     #best model and residuals
-                    themod = SliceModel( thisx, slicepars )
+                    themod = GaussModel( thisx, slicepars )
                     resids = ( slice - themod ) / snoise
 
                     ##detect outlier where residuals are really large
@@ -494,82 +494,98 @@ def Get_Shift( cube, comp ):
     return shift
 
 def Get_WavSol( Cube, CubeSig, Conf, plots = True, Frames = 'All', Orders = 'All' ):
+
+    if Conf.ArcWavDone:
+        FullWavSol = pickle.load( open( Conf.rdir + 'wavsol.pkl', 'rb' ) )
+
+    else:
+        if not os.path.exists( Conf.rdir + 'wavcal' ):
+            os.mkdir( Conf.rdir + 'wavcal' )
+
+        if Frames == 'All': frameloop = range( Cube.shape[0] )
+        else:               frameloop = Frames
+
+        if Orders == 'All': orderloop = range( Cube.shape[1] )
+        else:               orderloop = Orders
+
+        roughsol = pickle.load( open( Conf.codedir + 'prelim_wsol.pkl', 'rb' ) )
+        compspec = pickle.load( open( Conf.codedir + 'normfilt.pkl', 'rb' ) )
+
+        smoothcube, smoothsig, filtcube = Smooth_Spec( Cube, CubeSig )
+
+        orderdif = Get_Shift( filtcube[0], compspec )
+
+        if orderdif < 0 or orderdif + Cube.shape[0] > roughsol.shape[0]:
+            raw_input( 'Problem with number of orders found.\n' )
+
+        FullWavSol  = np.zeros( ( Cube.shape[0], Cube.shape[1], Cube.shape[2] ) )
+        FullParams  = np.zeros( ( Cube.shape[0], Cube.shape[1], 5 ) )
     
-    if not os.path.exists( Conf.rdir + 'wavcal' ):
-        os.mkdir( Conf.rdir + 'wavcal' )
+        THAR            = { 'wav': 0, 'spec': 0, 'logspec': 0, 'lines': 0 }
+        THARcalib       = fits.open( Conf.codedir + 'thar_photron.fits' )[0]
+        header          = THARcalib.header
+        THAR['spec']    = THARcalib.data
+        THAR['wav']     = np.arange( len(THAR['spec']) ) * header['CDELT1'] + header['CRVAL1']
+        THAR['logspec'] = np.log10( THAR['spec'] )
+        THAR['lines']   = pd.read_table( Conf.codedir + 'ThAr_list.txt', delim_whitespace = True ).wav.values
 
-    if Frames == 'All': frameloop = range( Cube.shape[0] )
-    else:               frameloop = Frames
+        badorders = [ [] for i in range( len(frameloop) ) ]
+        
+        i = 0
+        for frame in frameloop:
+            framepath = Conf.rdir + 'wavcal/arcframe_' + str( frame )
+            if not os.path.exists( framepath ):
+                os.mkdir( framepath )
 
-    if Orders == 'All': orderloop = range( Cube.shape[1] )
-    else:               orderloop = Orders
+            for order in orderloop:
+                orderpath = framepath + '/order_' + str(order)
+                if os.path.exists( orderpath ):
+                    for f in glob.glob( orderpath + '/*.*' ): os.remove(f)
+                else:
+                    os.mkdir( orderpath )
 
-    roughsol = pickle.load( open( Conf.codedir + 'prelim_wsol.pkl', 'rb' ) )
-    compspec = pickle.load( open( Conf.codedir + 'normfilt.pkl', 'rb' ) )
+                if os.path.exists( orderpath + '/rejplots' ):
+                    for f in glob.glob( orderpath + '/rejplots/*' ): os.remove(f)
+                else:
+                    os.mkdir( orderpath + '/rejplots' )
 
-    smoothcube, smoothsig, filtcube = Smooth_Spec( Cube, CubeSig )
+                arcspec    = smoothcube[frame,order,:]
+                arcsigma   = smoothsig[frame,order,:]
+                prelimsol  = roughsol[order+orderdif,:]
 
-    orderdif = Get_Shift( filtcube[0], compspec )
+                logarcspec = np.log10( arcspec )
+                #logarcspec = np.log10( arcspec - np.min( arcspec ) + 1.0 )
+                #logarcspec = logarcspec - np.min( logarcspec )
 
-    print orderdif
-    if orderdif < 0 or orderdif + Cube.shape[0] > roughsol.shape[0]:
-        raw_input( 'Problem with number of orders found.\n' )
-
-    FullWavSol  = np.zeros( ( Cube.shape[0], Cube.shape[1], Cube.shape[2] ) )
-    FullParams  = np.zeros( ( Cube.shape[0], Cube.shape[1], 5 ) )
-    
-    THAR            = { 'wav': 0, 'spec': 0, 'logspec': 0, 'lines': 0 }
-    THARcalib       = fits.open( Conf.codedir + 'thar_photron.fits' )[0]
-    header          = THARcalib.header
-    THAR['spec']    = THARcalib.data
-    THAR['wav']     = np.arange( len(THAR['spec']) ) * header['CDELT1'] + header['CRVAL1']
-    THAR['logspec'] = np.log10( THAR['spec'] )
-    THAR['lines']   = pd.read_table( Conf.codedir + 'ThAr_list.txt', delim_whitespace = True ).wav.values
-    
-    for frame in frameloop:
-        framepath = Conf.rdir + 'wavcal/arcframe_' + str( frame )
-        if not os.path.exists( framepath ):
-            os.mkdir( framepath )
+                wavsol, params, keeps, rejs, flag = Fit_WavSol( prelimsol, arcspec, arcsigma, THAR['lines'], orderpath, THAR, plots = plots )
             
-        badorders = []
-        for order in orderloop:
-            orderpath = framepath + '/order_' + str(order)
-            if os.path.exists( orderpath ):
-                for f in glob.glob( orderpath + '/*' ): os.remove(f)
-            else:
-                os.mkdir( orderpath )
-
-            arcspec    = smoothcube[frame,order,:]
-            arcsigma   = smoothsig[frame,order,:]
-            prelimsol  = roughsol[order+orderdif,:]
-            
-            logarcspec = np.log10( arcspec - np.min( arcspec ) + 1.0 )
-            logarcspec = logarcspec - np.min( logarcspec )
-
-            wavsol, params, keeps, rejs, flag = Fit_WavSol( prelimsol, arcspec, arcsigma, THAR['lines'], orderpath, THAR, plots = plots )
-            
-            if flag:
-                badorders.append(order)
+                if flag:
+                    badorders[i].append(order)
                 
-            pickle.dump( keeps, open( orderpath + '/peakskept_ord_' + str(order) + '.pkl', 'wb' ) )
-            pickle.dump( rejs, open( orderpath + '/peaksrej_ord_' + str(order) + '.pkl', 'wb' ) )
+                pickle.dump( keeps, open( orderpath + '/peakskept_ord_' + str(order) + '.pkl', 'wb' ) )
+                pickle.dump( rejs, open( orderpath + '/peaksrej_ord_' + str(order) + '.pkl', 'wb' ) )
             
-            if plots:
-                plt.clf()
-                plt.plot( wavsol, logarcspec, 'k-', lw = 1 )
-                plt.plot( THAR['wav'], THAR['logspec'], 'r-', lw = 1 )
-                plt.xlim( wavsol[0], wavsol[-1] )
-                for peak in keeps['line']:
-                    plt.axvline( x = peak, color = 'b', ls = ':', lw = 1 )
-                plt.savefig(orderpath + '/fullspec_ord_' + str(order) + '.pdf' )
+                if plots:
+                    plt.clf()
+                    plt.plot( wavsol, logarcspec, 'k-', lw = 1 )
+                    plt.plot( THAR['wav'], THAR['logspec'], 'r-', lw = 1 )
+                    plt.xlim( wavsol[0], wavsol[-1] )
+                    for peak in keeps['line']:
+                        plt.axvline( x = peak, color = 'b', ls = ':', lw = 1 )
+                    plt.savefig(orderpath + '/fullspec_ord_' + str(order) + '.pdf' )
 
-                if order != 57: Plot_Wavsol_Windows( wavsol, keeps['line'], logarcspec, THAR, orderpath, frame, order )
+                    Plot_Wavsol_Windows( wavsol, keeps['line'], logarcspec, THAR, orderpath, frame, order )
 
-            FullWavSol[frame,order] = wavsol
-            FullParams[frame,order] = params
+                FullWavSol[frame,order] = wavsol
+                FullParams[frame,order] = params
+
+            i += 1
+
+    pickle.dump( FullWavSol, open( Conf.rdir + 'wavsol.pkl', 'wb' ) )
+    pickle.dump( FullParams, open( Conf.rdir + 'wavparams.pkl', 'wb' ) )
     
     print badorders
-    return FullWavSol, FullParams
+    return FullWavSol
 
 def Find_Peaks( wav, spec, specsig, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
         
@@ -594,25 +610,9 @@ def Find_Peaks( wav, spec, specsig, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
         upperbds = [ None, p0[1] + 2.0, 1.5, None ]
         parinfo  = [ { 'limits': ( lowerbds[i], upperbds[i] ) } for i in range( len(p0) ) ]
 
-        print p0
-        # Delete
         try:
             params, res = mpyfit.fit( Least, p0, ( inds, yi, sigi, GaussModel ), parinfo = parinfo )
-            fitx = np.linspace( inds.min(), inds.max(), 1000 )
-            plt.step( inds, yi, 'k', where = 'mid' )
-            plt.plot( fitx, GaussModel(fitx,params), 'r-' )
-            plt.errorbar( inds, yi, yerr = sigi, fmt = 'none' )
-            plt.title( str(peak) )
-            plt.show()
 
-        except RuntimeError:
-            print 'RuntimeError'
-
-        pdb.set_trace()
-        
-        try:
-            params, res = mpyfit.fit( Least, p0, ( inds, yi, None, GaussModel ), parinfo = parinfo )
-            
             pixval  = peak - pwidth + params[1]
             pixcent = np.append( pixcent, pixval )
             
@@ -621,9 +621,17 @@ def Find_Peaks( wav, spec, specsig, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
             slope   = ( wav[ceiling] - wav[floor] ) / ( ceiling - floor )
             wavval  = wav[floor] + slope * ( pixval - floor )
             wavcent = np.append( wavcent, wavval )
-            
-        except ( RuntimeError, ValueError ):
-            pixval  = 'nan'
+
+            # fitx = np.linspace( inds.min(), inds.max(), 1000 )
+            # plt.step( inds, yi, 'k', where = 'mid' )
+            # plt.plot( fitx, GaussModel(fitx,params), 'r-' )
+            # plt.errorbar( inds, yi, yerr = sigi, fmt = 'none' )
+            # plt.title( str(peak) )
+            # plt.show()
+
+        except RuntimeError:
+            print 'RuntimeError'
+            #pdb.set_trace()
     
     vals = spec[pixcent.astype(int)]
     oks  = np.ones( len(pixcent), int )
@@ -675,6 +683,8 @@ def Fit_WavSol( wav, spec, specsig, THARcat, path, THAR, snr = 5, minsep = 0.5, 
         tokeep = np.logical_not( torej )
         numrej = np.sum( torej )
 
+        pdb.set_trace()
+
         # velcut     = np.sum( np.abs(resids['vel']) >= 0.2 )
         # gtcut      = np.abs( resids['wav'] ) >= cutoff * np.median( np.abs( resids['wav'] ) )
         # numrej     = np.sum( gtcut )
@@ -687,7 +697,16 @@ def Fit_WavSol( wav, spec, specsig, THARcat, path, THAR, snr = 5, minsep = 0.5, 
             if numrej > 0:
                 if plots:
                     plotname = path + '/resids_round_' + str(ploti) + '.pdf'
-                    Plot_WavSol_Resids( resids, keeps['line'], cutoff * 0.67449, plotname, tokeep = tokeep, toreject = torej )
+                    Plot_WavSol_Resids( resids, keeps['line'], cutoff, plotname, tokeep = tokeep, toreject = torej )
+
+                    pltwav = np.polyval( wavparams, np.arange( len( spec ) ) )
+                    plt.clf()
+                    plt.plot( pltwav, np.log10(spec), 'k-', lw = 1 )
+                    plt.plot( THAR['wav'], THAR['logspec'], 'r-', lw = 1 )
+                    plt.xlim( pltwav[0], pltwav[-1] )
+                    for peak in keeps['line']:
+                        plt.axvline( x = peak, color = 'b', ls = ':', lw = 1 )
+                    plt.savefig(path + '/rejplots/fullspec_' + str(ploti) + '.pdf')
 
                     # wav = np.polyval(wavparams,np.arange(len(spec)))
                     # plt.clf()
@@ -717,7 +736,7 @@ def Fit_WavSol( wav, spec, specsig, THARcat, path, THAR, snr = 5, minsep = 0.5, 
                 
             else:
                 print 'There is something seriously wrong.\n'
-                print 'There are points > 1 km/s, but none are found to be rejected. FIX'
+                print 'There are points > 0.2 km/s, but none are found to be rejected. FIX'
                 flag = True
                 if plots:
                     plotname = path + '/resids_round_' + str(ploti) + '_flag.pdf'
@@ -769,45 +788,58 @@ def Plot_Wavsol_Windows( wavsol, wavkeep, spec, THAR, path, frame, order ):
     
     numfigs = np.ceil( np.ceil( np.ptp( wavsol ) / 10.0 ) / 6.0 ).astype(int)
     start   = np.min( wavsol )
-    for i in range(numfigs):
-        fig   = plt.figure()
-        j = 1
-        while start <= np.max( wavsol ) and j < 7:
-            sbplt = 230 + j
-            fig.add_subplot(sbplt)
-            plt.plot( wavsol, spec, 'k-', lw = 1 )
-            plt.plot( THAR['wav'], THAR['logspec'], 'r-', lw = 1 )
-            for peak in wavkeep:
-                plt.axvline( x = peak, color = 'b', ls = ':', lw = 1 )
-            plt.xlim( start, start + 10.0 )
-            plt.yticks( [], [] )
-            low = np.round( start, 1 )
-            plt.xticks( np.linspace( low, low + 10.0, 3 ), fontsize = 5 )
-            start += 10.0
-            j += 1
-        plt.suptitle( 'Frame: ' + str(frame) + ', Order: ' + str(order) + ', Window: ' + str(i) )
-        if path != None: plt.savefig( path + '/specwindow_' + str(i) + '.pdf' )
-        else: plt.show()
+    if numfigs > 4:
+        return None
+    else:
+        for i in range(numfigs):
+            fig   = plt.figure()
+            j = 1
+            while start <= np.max( wavsol ) and j < 7:
+                sbplt = 230 + j
+                fig.add_subplot(sbplt)
+                plt.plot( wavsol, spec, 'k-', lw = 1 )
+                plt.plot( THAR['wav'], THAR['logspec'], 'r-', lw = 1 )
+                for peak in wavkeep:
+                    plt.axvline( x = peak, color = 'b', ls = ':', lw = 1 )
+                plt.xlim( start, start + 10.0 )
+                plt.yticks( [], [] )
+                low = np.round( start, 1 )
+                plt.xticks( np.linspace( low, low + 10.0, 3 ), fontsize = 5 )
+                start += 10.0
+                j += 1
+            plt.suptitle( 'Frame: ' + str(frame) + ', Order: ' + str(order) + ', Window: ' + str(i) )
+            if path != None: plt.savefig( path + '/specwindow_' + str(i) + '.pdf' )
+            else: plt.show()
     
-    return None
+        return None
 
 ########## WAVELENTH INTERPOLATION ##########
 
-def Interpolate_Obj_WavSol( wavsol, arctime, objtime ):
+def Interpolate_Obj_WavSol( wavsol, info, arcinds, objinds, Conf ):
 
-    Wsol_Obj = np.zeros( ( len(objtime), wavsol.shape[1], wavsol.shape[2] ) )
+    if Conf.ObjWavDone:
+        Wsol_Obj = pickle.load( open( Conf.rdir + 'objwavsol.pkl', 'rb' ) )
 
-    for i in range( len( objtime ) ):
-        deltime = objtime[i] - arctime
+    else:
+        juldays  = UT_Convert( info.UT.values, info.UTdate.values )
+        arctime  = juldays[arcinds]
+        objtime  = juldays[objinds]
 
-        if np.max( arctime ) < objtime[i] or np.min( arctime ) > objtime[i]:
-            print 'Target obs ' + str(i+1) + ' not bounded by arcs, using closest arc.'
-            closest     = np.argmin( np.abs( deltime ) )
-            Wsol_Obj[i] = wavsol[closest]
-        else:
-            bef = np.where( tdist > 0 )[0][-1]
-            aft = np.where( tdist < 0 )[0][0]
-            Wsol_Obj[i] = wavsol[bef] + ( wavsol[aft] - wavsol[bef] ) / ( arctime[aft] - arctime[bef] ) * ( objtime[i] - arctime[bef] )
+        Wsol_Obj = np.zeros( ( len(objtime), wavsol.shape[1], wavsol.shape[2] ) )
+
+        for i in range( len( objtime ) ):
+            deltime = objtime[i] - arctime
+
+            if np.max( arctime ) < objtime[i] or np.min( arctime ) > objtime[i]:
+                print 'Target obs ' + str(i+1) + ' not bounded by arcs, using closest arc.'
+                closest     = np.argmin( np.abs( deltime ) )
+                Wsol_Obj[i] = wavsol[closest]
+            else:
+                bef = np.where( deltime > 0 )[0][-1]
+                aft = np.where( deltime < 0 )[0][0]
+                Wsol_Obj[i] = wavsol[bef] + ( wavsol[aft] - wavsol[bef] ) / ( arctime[aft] - arctime[bef] ) * ( objtime[i] - arctime[bef] )
+
+        pickle.dump( Wsol_Obj, open( Conf.rdir + 'objwavsol.pkl', 'wb' ) )
 
     return Wsol_Obj
 

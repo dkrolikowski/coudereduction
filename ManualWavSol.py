@@ -257,7 +257,6 @@ class Click_WavSol():
         for line in self.lines:
             plt.axvline( x = line, color = 'b', ls = ':' )
         plt.xlim( np.min( self.obswav ) - 5.0, np.max( self.obswav ) + 5.0 )
-        
         fig = plt.gcf()
         cid = fig.canvas.mpl_connect( 'key_press_event', self.__onclick__ )
         plt.show()

@@ -5,7 +5,7 @@ import os, readcol, pickle, pdb
 
 class Configs():
     def __init__( self ):
-        self.dir  = os.getenv("HOME") + '/Google Drive/YMG/coude_data/20140321/'
+        self.dir  = os.getenv("HOME") + '/Google Drive/YMG/coude_data/20161114/'
         self.rdir = self.dir + 'reduction/'
         if os.getenv("HOME").split('/')[-1] == 'dmk2347':
             self.codedir = os.getenv("HOME") + '/codes/coudereduction/'
@@ -15,6 +15,8 @@ class Configs():
         self.CalsDone    = True
         self.TraceDone   = True
         self.ExtractDone = True
+        self.ArcWavDone  = False
+        self.ObjWavDone  = True
 
         self.PlotsOn     = False
 
@@ -56,10 +58,10 @@ MedTrace, FitTrace = Fns.Get_Trace( FlatField, ObjCube, Conf )
 if Conf.ExtractDone:
     wspec     = pickle.load( open( Conf.rdir + 'extracted_wspec.pkl', 'rb' ) )
     sig_wspec = pickle.load( open( Conf.rdir + 'extracted_sigwspec.pkl', 'rb' ) )
-    #spec      = pickle.load( open( Conf.rdir + 'extracted_spec.pkl', 'rb' ) )
-    #sig_spec  = pickle.load( open( Conf.rdir + 'extracted_sigspec.pkl', 'rb' ) )
+    spec      = pickle.load( open( Conf.rdir + 'extracted_spec.pkl', 'rb' ) )
+    sig_spec  = pickle.load( open( Conf.rdir + 'extracted_sigspec.pkl', 'rb' ) )
 else:
-    #wspec, sig_wspec = Fns.Extractor( ArcCube, ArcSNR, FitTrace, quick = True, arc = True, nosub = True )
+    wspec, sig_wspec = Fns.Extractor( ArcCube, ArcSNR, FitTrace, quick = True, arc = True, nosub = True )
     spec, sig_spec   = Fns.Extractor( ObjCube, ObjSNR, FitTrace, quick = False, arc = False, nosub = False )
     #pickle.dump( wspec, open( Conf.rdir + 'extracted_wspec.pkl', 'wb' ) )
     #pickle.dump( sig_wspec, open( Conf.rdir + 'extracted_sigwspec.pkl', 'wb' ) )
@@ -68,9 +70,8 @@ else:
 
 wspec      = wspec[:,::-1,:]
 sig_wspec  = sig_wspec[:,::-1,:]
-# spec       = spec[:,::-1,:]
-# sig_spec   = sig_spec[:,::-1,:]
+spec       = spec[:,::-1,:]
+sig_spec   = sig_spec[:,::-1,:]
 
-sols, params = Fns.Get_WavSol( wspec, sig_wspec, Conf, Frames = [0], Orders = [42] )
-#pickle.dump( sols, open( rdir + 'wavsol.pkl', 'wb' ) )
-#pickle.dump( params, open( rdir + 'wavparams.pkl', 'wb' ) )
+arcwavsol = Fns.Get_WavSol( wspec, sig_wspec, Conf, Frames = [0], Orders = [0] )
+objwavsol = Fns.Interpolate_Obj_WavSol( arcwavsol, FileInfo, ArcInds, ObjInds, Conf )
