@@ -9,18 +9,19 @@ class Configs():
         self.rdir    = self.dir + 'reduction/'
         self.codedir = os.getenv("HOME") + '/codes/coudereduction/'
 
-        self.CalsDone    = True
-        self.TraceDone   = True
-        self.ExtractDone = True
-        self.ArcWavDone  = False
-        self.ObjWavDone  = True
+        self.CalsDone   = True
+        self.TraceDone  = True
+        self.ArcExDone  = True
+        self.ObjExDone  = True
+        self.ArcWavDone = True
+        self.ObjWavDone = True
 
-        self.PlotsOn     = False
+        self.PlotsOn    = False
 
-        self.DarkCurVal  = 0.0
-        self.MedCut      = 95.0
+        self.DarkCurVal = 0.0
+        self.MedCut     = 95.0
 
-        self.InfoFile    = 'headstrip.csv'
+        self.InfoFile   = 'headstrip.csv'
 
 Conf = Configs()
 
@@ -52,16 +53,19 @@ ArcCube, ArcSNR, ObjCube, ObjSNR = Fns.Return_Cubes( ArcInds, ObjInds, FileInfo,
 
 MedTrace, FitTrace = Fns.Get_Trace( FlatField, ObjCube, Conf )
 
-if Conf.ExtractDone:
+if Conf.ArcExDone:
     wspec     = pickle.load( open( Conf.rdir + 'extracted_wspec.pkl', 'rb' ) )
     sig_wspec = pickle.load( open( Conf.rdir + 'extracted_sigwspec.pkl', 'rb' ) )
+else:
+    wspec, sig_wspec = Fns.Extractor( ArcCube, ArcSNR, FitTrace, quick = True, arc = True, nosub = True )
+    pickle.dump( wspec, open( Conf.rdir + 'extracted_wspec.pkl', 'wb' ) )
+    pickle.dump( sig_wspec, open( Conf.rdir + 'extracted_sigwspec.pkl', 'wb' ) )
+
+if Conf.ObjExDone:
     spec      = pickle.load( open( Conf.rdir + 'extracted_spec.pkl', 'rb' ) )
     sig_spec  = pickle.load( open( Conf.rdir + 'extracted_sigspec.pkl', 'rb' ) )
 else:
-    wspec, sig_wspec = Fns.Extractor( ArcCube, ArcSNR, FitTrace, quick = True, arc = True, nosub = True )
     spec, sig_spec   = Fns.Extractor( ObjCube, ObjSNR, FitTrace, quick = False, arc = False, nosub = False )
-    #pickle.dump( wspec, open( Conf.rdir + 'extracted_wspec.pkl', 'wb' ) )
-    #pickle.dump( sig_wspec, open( Conf.rdir + 'extracted_sigwspec.pkl', 'wb' ) )
     pickle.dump( spec, open( Conf.rdir + 'extracted_spec.pkl', 'wb' ) )
     pickle.dump( sig_spec, open( Conf.rdir + 'extracted_sigspec.pkl', 'wb' ) )
 
@@ -72,3 +76,5 @@ sig_spec   = sig_spec[:,::-1,:]
 
 arcwavsol = Fns.Get_WavSol( wspec, sig_wspec, Conf )
 objwavsol = Fns.Interpolate_Obj_WavSol( arcwavsol, FileInfo, ArcInds, ObjInds, Conf )
+
+Fns.Spec_Plots( objwavsol, spec, sig_spec, spec / sig_spec, 20.0, 8, Conf.rdir )

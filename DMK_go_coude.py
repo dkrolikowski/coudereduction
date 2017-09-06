@@ -328,25 +328,27 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
         print "Extracting Frame " + str(frm+1) +" out of " + str(cube.shape[0])
         thisfrm = cube[frm,:,:]
         thissnr = cube_snr[frm,:,:]
-        
+
         for ord in range( trace.shape[0] ):
 
             tblock = np.zeros( ( trace.shape[1], 16 ) )
             tsnr   = tblock.copy()
             x, y   = [ c.T for c in np.meshgrid( np.arange( tblock.shape[0] ), np.arange( tblock.shape[1] ) ) ]
-
+            
             for pix in range( trace.shape[1] ):
-                low           = int(trace[ord,pix]) - 8
-                high          = int(trace[ord,pix]) + 8
-                tblock[pix,:] = thisfrm[low:high,pix]
-                tsnr[pix,:]   = thissnr[low:high,pix]
+                low           = np.round(trace[ord,pix]).astype(int) - 10
+                high          = np.round(trace[ord,pix]).astype(int) + 10
+                tblock[pix,:] = np.interp( np.linspace(trace[ord,pix] - 8, trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thisfrm[low:high,pix] )
+                tsnr[pix,:]   = np.interp( np.linspace(trace[ord,pix] - 8, trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thissnr[low:high,pix] )
 
+            #pdb.set_trace()
+            
             if (quick == False) & (arc == False):   
 
                 ##clean obvious high outliers 
-                toohigh         = np.where( tblock > 10.0 * np.median( tblock ) )
-                tblock[toohigh] = np.median( tblock )
-                tsnr[toohigh]   = 0.000001
+                #toohigh         = np.where( tblock > 10.0 * np.median( tblock ) )
+                #tblock[toohigh] = np.median( tblock )
+                #tsnr[toohigh]   = 0.000001
                 tnoise          = np.absolute( tblock / ( tsnr ) )
 
                 ##clean zero values (often due to chip artifacts that aren't caught)
@@ -372,6 +374,11 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
                 ##now remove points that are obvious outliers from the best model
                 cutresid       = np.percentile( bestresid.flatten() , 99.99 )
                 badcut         = np.where( bestresid > cutresid )
+
+               # plt.imshow( tsnr, aspect = 'auto' )
+               # plt.plot( badcut[1], badcut[0], 'ro' )
+               # plt.show()
+                
                 tblock[badcut] = np.median( tblock )
                 tsnr[badcut]   = 0.00001
                 thistrace      = besttrace[:,0].copy()
@@ -414,7 +421,7 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
                     parinfo[2]['limits'] = ( p0[2] - 1.0, p0[2] + 2.0 )
 
                     slicepars, sliceres  = mpyfit.fit( Least, p0, ( thisx, slice, snoise, GaussModel ), parinfo = parinfo )
-
+                    
                     savesigma[pix] = slicepars[2]
                     savespot[pix]  = slicepars[1]
                     savepeak[pix]  = slicepars[0]
@@ -430,6 +437,13 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
                     bads   = np.where( np.absolute( resids ) > 20 )[0]
                     slice_snr[bads] = 0.0001 ##set their SNR to effective zero
                     if len(bads) > 3: slice_snr = slice_snr*0.000+0.0001 ##if there are three bad points of more, kill the whole pixel position
+
+                    # plt.plot( thisx, slice, 'k-' )
+                    # plt.plot( thisx, GaussModel( thisx, slicepars ), 'r-' )
+                    # plt.plot( thisx[bads], slice[bads], 'bx' )
+                    # plt.show()
+
+                    # pdb.set_trace()
 
                 ## if quick is true, simple minimum background
                 if quick   == True: bg = slice * 0.0 + np.min( np.absolute( slice ) )
@@ -581,10 +595,10 @@ def Get_WavSol( Cube, CubeSig, Conf, plots = True, Frames = 'All', Orders = 'All
 
             i += 1
 
-    pickle.dump( FullWavSol, open( Conf.rdir + 'wavsol.pkl', 'wb' ) )
-    pickle.dump( FullParams, open( Conf.rdir + 'wavparams.pkl', 'wb' ) )
+        pickle.dump( FullWavSol, open( Conf.rdir + 'wavsol.pkl', 'wb' ) )
+        pickle.dump( FullParams, open( Conf.rdir + 'wavparams.pkl', 'wb' ) )
     
-    print badorders
+        print badorders
     return FullWavSol
 
 def Find_Peaks( wav, spec, specsig, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
@@ -668,7 +682,7 @@ def Fit_WavSol( wav, spec, specsig, THARcat, path, THAR, snr = 5, minsep = 0.5, 
 
     dofit  = True
     ploti  = 1
-    cutoff = 3.0 / 0.67449 # Corrects MAD to become sigma
+    cutoff = 4.0 / 0.67449 # Corrects MAD to become sigma
     
     while dofit:
         wavparams  = np.polyfit( keeps['pix'], keeps['line'], 4 )
@@ -730,7 +744,7 @@ def Fit_WavSol( wav, spec, specsig, THARcat, path, THAR, snr = 5, minsep = 0.5, 
                 
                 ploti += 1
                 
-            elif numrej == 0 and cutoff == 3.0 / 0.67449:
+            elif numrej == 0 and cutoff == 4.0 / 0.67449:
                 cutoff = 2.0 / 0.67449
                 
             else:
@@ -901,3 +915,40 @@ def UT_Convert( UT, UTdate ):
         julday[i]   = Date_To_JD( yr, mth, dy + dayfrac )
         
     return julday
+
+########## Spec Plots ##########
+
+def Spec_Plots( wav, spec, sig, snr, snrcut, frm, path ):
+
+    # First just the full spectrum
+    for i in range( wav.shape[1] ):
+        plt.step( wav[frm,i], spec[frm,i], where = 'mid' )
+
+    plt.savefig( path + 'plots/fullspec_frm_' + str(frm) + '.pdf' )
+    plt.clf()
+    
+    # Now a SNR cut spectrum
+    for i in range( wav.shape[1] ):
+        clean = np.where( snr[frm,i] >= snrcut )[0]
+        plt.step( wav[frm,i,clean], spec[frm,i,clean], where = 'mid' )
+
+    plt.savefig( path + 'plots/cleanspec_frm_' + str(frm) + '.pdf' )
+    plt.clf()
+
+    # Plot SNR vs Order Center
+    ordvals = np.zeros( wav.shape[1] )
+    snrvals = ordvals.copy()
+    orderrs = np.zeros( ( wav.shape[1], 2 ) )
+    snrerrs = orderrs.copy()
+
+    for i in range( wav.shape[1] ):
+        ordvals[i] = np.median( wav[frm,i] )
+        snrvals[i] = np.median( snr[frm,i] )
+        orderrs[i] = [ ordvals[i] - wav[frm,i].min(), wav[frm,i].max() - ordvals[i] ]
+        snrerrs[i] = [ snrvals[i] - np.percentile( snr[frm,i], 16.0 ), np.percentile( snr[frm,i], 84.0 ) - snrvals[i] ]
+
+    plt.errorbar( ordvals, snrvals, xerr = orderrs.T, yerr = snrerrs.T, fmt = 'k', ls = 'none', capsize = 3 )
+    plt.savefig( path + 'plots/snrvsord_frm_' + str(frm) + '.pdf' )
+    plt.clf()
+
+    return None
