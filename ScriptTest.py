@@ -5,16 +5,16 @@ import os, readcol, pickle, pdb
 
 class Configs():
     def __init__( self ):
-        self.dir     = os.getenv("HOME") + '/Google Drive/YMG/coude_data/20161114/'
+        self.dir     = os.getenv("HOME") + '/Research/YMG/coude_data/20161205/'
         self.rdir    = self.dir + 'reduction/'
         self.codedir = os.getenv("HOME") + '/codes/coudereduction/'
 
         self.CalsDone   = True
         self.TraceDone  = True
-        self.ArcExDone  = True
-        self.ObjExDone  = True
-        self.ArcWavDone = True
-        self.ObjWavDone = True
+        self.ArcExDone  = False
+        self.ObjExDone  = False
+        self.ArcWavDone = False
+        self.ObjWavDone = False
 
         self.PlotsOn    = False
 

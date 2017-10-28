@@ -98,14 +98,15 @@ def Basic_Cals( BiasFiles, FlatFiles, Conf ):
         SuperBias  = pickle.load( open( Conf.rdir + 'bias.pkl', 'rb' ) )
         FlatField  = pickle.load( open( Conf.rdir + 'flat.pkl', 'rb' ) )
 
-    if Conf.PlotsOn:
-        print 'Plotting bias:'
-        plt.imshow( np.log10( SuperBias ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
-        plt.colorbar(); plt.savefig( Conf.rdir + 'plots/bias.pdf' ); plt.show()
+    plt.clf()
+    plt.imshow( np.log10( SuperBias ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
+    plt.colorbar(); plt.savefig( Conf.rdir + 'plots/bias.pdf' )
+    if Conf.PlotsOn: print 'Plotting Bias:\n'; plt.show()
 
-        print 'Plotting flat:'
-        plt.imshow( np.log10( FlatField ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
-        plt.colorbar(); plt.savefig( Conf.rdir + 'plots/flat.pdf' ); plt.show()
+    plt.clf()
+    plt.imshow( np.log10( FlatField ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
+    plt.colorbar(); plt.savefig( Conf.rdir + 'plots/flat.pdf' )
+    if Conf.PlotsOn: print 'Plotting FlatField:\n'; plt.show()
         
     return SuperBias, FlatField
 
@@ -114,11 +115,11 @@ def Make_BPM( Bias, Flat, CutLevel, Conf ):
     cutbias = np.percentile( Bias, CutLevel )
     BPM     = np.where( ( Bias > cutbias ) | ( Flat <= 0.0001 ) )
 
-    if Conf.PlotsOn:
-        plt.imshow( np.log10( Bias ), aspect = 'auto', interpolation = 'none' )
-        plt.plot( BPM[1], BPM[0], 'r,' ) # Invert x,y for imshow
-        print 'Plotting the bad pixel mask over the bias:'
-        plt.savefig( Conf.rdir + 'plots/bpm.pdf' ); plt.show()
+    plt.clf()
+    plt.imshow( np.log10( Bias ), aspect = 'auto', interpolation = 'none' )
+    plt.plot( BPM[1], BPM[0], 'r,' ) # Invert x,y for imshow
+    plt.savefig( Conf.rdir + 'plots/bpm.pdf' )
+    if Conf.PlotsOn: print 'Plotting BPM over Bias:\n'; plt.show()
 
     return BPM
 
@@ -134,9 +135,9 @@ def Make_Cube( Files, ReadNoise, DarkCur, Bias = None, Flat = None, BPM = None )
         Cube[i] = frame - DarkCur[0]
         SNR[i]  = Cube[i] / np.sqrt( Cube[i] + DarkCur[0] + ReadNoise[0] ** 2.0 )
 
-        if Bias != None: Cube[i] -= Bias
-        if Flat != None: Cube[i] /= Flat
-        if BPM  != None:
+        if Bias is not None: Cube[i] -= Bias
+        if Flat is not None: Cube[i] /= Flat
+        if BPM  is not None:
             Cube[i, BPM[0], BPM[1]] = np.median( Cube[i] )
             SNR[i, BPM[0], BPM[1]]  = 0.001 # Effectively 0
 
@@ -252,17 +253,19 @@ def Get_Trace( Flat, Cube, Conf ):
     
     if Conf.TraceDone == False:
         print 'Performing preliminary trace'
-        if Conf.PlotsOn:
-            plt.plot( Flat[:,orderstart], 'k-' )
-            plt.plot( orderzeros, ordervals, 'ro' )
-            plt.savefig( Conf.rdir + 'plots/prelimtrace.pdf' ); plt.show()
+
+        plt.clf()
+        plt.plot( Flat[:,orderstart], 'k-' )
+        plt.plot( orderzeros, ordervals, 'ro' )
+        plt.savefig( Conf.rdir + 'plots/prelimtrace.pdf' )
+        if Conf.PlotsOn: print 'Plotting prelim trace:\n'; plt.show()
 
         meds      = [ np.median( Cube[i,:,:2048] ) for i in range( Cube.shape[0] ) ]
         abovemed  = Cube[ np.where( meds >= np.percentile( meds, Conf.MedCut ) ) ]
 
-        trace    = Full_Trace( abovemed, orderzeros, orderstart )
-        MedTrace = np.median( trace, axis = 0 )
-        FitTrace = Fit_Trace( MedTrace )
+        trace     = Full_Trace( abovemed, orderzeros, orderstart )
+        MedTrace  = np.median( trace, axis = 0 )
+        FitTrace  = Fit_Trace( MedTrace )
         if FitTrace[0,-1] < 8.0:
             MedTrace = MedTrace[1:]
             FitTrace = FitTrace[1:]
@@ -275,19 +278,20 @@ def Get_Trace( Flat, Cube, Conf ):
         MedTrace = pickle.load( open( Conf.rdir + 'median_trace.pkl', 'rb' ) )
         FitTrace = pickle.load( open( Conf.rdir + 'fitted_trace.pkl', 'rb' ) )
 
-    if Conf.PlotsOn:
-        plt.imshow( np.log10( Flat ), aspect = 'auto', cmap = plt.get_cmap( 'gray' ) )
-        for i in range( FitTrace.shape[0] ):
-            plt.plot( FitTrace[i,:], 'r-' )
-        plt.xlim( 0, 2048 )
-        plt.ylim( 2048, 0 )
-        plt.savefig( Conf.rdir + 'plots/trace.pdf' ); plt.show()
+    plt.clf()
+    plt.imshow( np.log10( Flat ), aspect = 'auto', cmap = plt.get_cmap( 'gray' ) )
+    for i in range( FitTrace.shape[0] ):
+        plt.plot( FitTrace[i,:], 'r-' )
+    plt.xlim( 0, 2048 )
+    plt.ylim( 2048, 0 )
+    plt.savefig( Conf.rdir + 'plots/trace.pdf' )
+    if Conf.PlotsOn: print 'Plotting trace over Flat:\n'; plt.show()
 
     return MedTrace, FitTrace
 
 def Least( p, args ):
     X, vals, err, func = args
-    if err != None:
+    if err is not None:
         dif = ( vals - func( X, p ) ) / err
     else:
         dif = vals - func( X, p )
@@ -334,7 +338,13 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
             tblock = np.zeros( ( trace.shape[1], 16 ) )
             tsnr   = tblock.copy()
             x, y   = [ c.T for c in np.meshgrid( np.arange( tblock.shape[0] ), np.arange( tblock.shape[1] ) ) ]
-            
+
+            # for pix in range( trace.shape[1] ):
+            #     low           = np.round(trace[ord,pix]).astype(int) - 8
+            #     high          = np.round(trace[ord,pix]).astype(int) + 8
+            #     tblock[pix,:] = thisfrm[low:high,pix]
+            #     tsnr[pix,:]   = thissnr[low:high,pix]
+
             for pix in range( trace.shape[1] ):
                 low           = np.round(trace[ord,pix]).astype(int) - 10
                 high          = np.round(trace[ord,pix]).astype(int) + 10
@@ -346,9 +356,9 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
             if (quick == False) & (arc == False):   
 
                 ##clean obvious high outliers 
-                #toohigh         = np.where( tblock > 10.0 * np.median( tblock ) )
-                #tblock[toohigh] = np.median( tblock )
-                #tsnr[toohigh]   = 0.000001
+                # toohigh         = np.where( tblock > 10.0 * np.median( tblock ) )
+                # tblock[toohigh] = np.median( tblock )
+                # tsnr[toohigh]   = 0.000001
                 tnoise          = np.absolute( tblock / ( tsnr ) )
 
                 ##clean zero values (often due to chip artifacts that aren't caught)
@@ -501,7 +511,7 @@ def Get_Shift( cube, comp ):
             difs.append( np.average( dif ) )
         mindif = np.argmin( difs )
         shifts.append( mindif - j )
-
+    
     test, counts = np.unique( shifts, return_counts = True )
     shift        = test[np.argmax(counts)]
 
@@ -530,6 +540,7 @@ def Get_WavSol( Cube, CubeSig, Conf, plots = True, Frames = 'All', Orders = 'All
         orderdif = Get_Shift( filtcube[0], compspec )
 
         if orderdif < 0 or orderdif + Cube.shape[0] > roughsol.shape[0]:
+            print orderdif
             raw_input( 'Problem with number of orders found.\n' )
 
         FullWavSol  = np.zeros( ( Cube.shape[0], Cube.shape[1], Cube.shape[2] ) )
@@ -644,7 +655,8 @@ def Find_Peaks( wav, spec, specsig, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
             # plt.show()
 
         except RuntimeError:
-            print 'RuntimeError'
+            pixval = 0
+            #print 'RuntimeError'
             #pdb.set_trace()
     
     vals = spec[pixcent.astype(int)]
@@ -682,7 +694,7 @@ def Fit_WavSol( wav, spec, specsig, THARcat, path, THAR, snr = 5, minsep = 0.5, 
 
     dofit  = True
     ploti  = 1
-    cutoff = 4.0 / 0.67449 # Corrects MAD to become sigma
+    cutoff = 3.0 / 0.67449 # Corrects MAD to become sigma
     
     while dofit:
         wavparams  = np.polyfit( keeps['pix'], keeps['line'], 4 )
@@ -744,7 +756,7 @@ def Fit_WavSol( wav, spec, specsig, THARcat, path, THAR, snr = 5, minsep = 0.5, 
                 
                 ploti += 1
                 
-            elif numrej == 0 and cutoff == 4.0 / 0.67449:
+            elif numrej == 0 and cutoff == 3.0 / 0.67449:
                 cutoff = 2.0 / 0.67449
                 
             else:
@@ -769,6 +781,8 @@ def Fit_WavSol( wav, spec, specsig, THARcat, path, THAR, snr = 5, minsep = 0.5, 
                 Plot_WavSol_Resids( resids, keeps['line'], cutoff, plotname, tokeep = tokeep )
             flag = False
             dofit = False
+
+    #if path[-1] == '1': pdb.set_trace()
             
     wavsol = np.polyval( wavparams, np.arange( len(spec) ) )
 
@@ -783,11 +797,11 @@ def Plot_WavSol_Resids( resids, lines, cutoff, savename, tokeep = None, toreject
     fig, (wavax, velax) = plt.subplots( 2, 1, sharex = 'all' )
     wavax.axhline( y = 0.0, color = 'k', ls = ':' )
     velax.axhline( y = 0.0, color = 'k', ls = ':' )
-    if toreject == None:
+    if toreject is None:
         wavax.plot( lines, resids['wav'], 'ko', mfc = 'none' )
         velax.plot( lines, resids['vel'], 'ko', mfc = 'none' )
         fig.suptitle( 'Lines Used: ' + str(lines.size) + ', Cutoff: ' + str(cutoff * 0.67449) + ' $\sigma$' )
-    elif tokeep == None:
+    elif tokeep is None:
         wavax.plot( lines, resids['wav'], 'kx', mfc = 'none' )
         velax.plot( lines, resids['vel'], 'kx', mfc = 'none' )
         fig.suptitle( 'Lines Used: ' + str(lines.size) + ', Cutoff: ' + str(cutoff * 0.67449) + ' $\sigma$' )
@@ -836,8 +850,8 @@ def Plot_Wavsol_Windows( wavsol, wavkeep, spec, THAR, path, frame, order ):
                 start += 10.0
                 j += 1
             plt.suptitle( 'Frame: ' + str(frame) + ', Order: ' + str(order) + ', Window: ' + str(i) )
-            if path != None: plt.savefig( path + '/specwindow_' + str(i) + '.pdf' )
-            else: plt.show()
+            plt.savefig( path + '/specwindow_' + str(i) + '.pdf' ); plt.clf()
+            #else: plt.show()
     
         return None
 
@@ -920,6 +934,7 @@ def UT_Convert( UT, UTdate ):
 
 def Spec_Plots( wav, spec, sig, snr, snrcut, frm, path ):
 
+    plt.clf()
     # First just the full spectrum
     for i in range( wav.shape[1] ):
         plt.step( wav[frm,i], spec[frm,i], where = 'mid' )
