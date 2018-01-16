@@ -266,7 +266,7 @@ def Get_Trace( Flat, Cube, Conf ):
         trace     = Full_Trace( abovemed, orderzeros, orderstart )
         MedTrace  = np.median( trace, axis = 0 )
         FitTrace  = Fit_Trace( MedTrace )
-        if FitTrace[0,-1] < 8.0:
+        if FitTrace[0,-1] <= 10.0:
             MedTrace = MedTrace[1:]
             FitTrace = FitTrace[1:]
         print 'Saving median trace to file'
@@ -328,7 +328,10 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
     flux  = np.zeros( ( cube.shape[0], trace.shape[0], trace.shape[1] ) )
     error = flux * 0.0
 
-    for frm in range( cube.shape[0] ):
+    tfrm = 0
+    
+    for frm in [ 0, 32 ]:
+    # for frm in range( cube.shape[0] ):
         print "Extracting Frame " + str(frm+1) +" out of " + str(cube.shape[0])
         thisfrm = cube[frm,:,:]
         thissnr = cube_snr[frm,:,:]
@@ -351,14 +354,20 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
                 tblock[pix,:] = np.interp( np.linspace(trace[ord,pix] - 8, trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thisfrm[low:high,pix] )
                 tsnr[pix,:]   = np.interp( np.linspace(trace[ord,pix] - 8, trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thissnr[low:high,pix] )
 
-            #pdb.set_trace()
+            # pdb.set_trace()
+
+            if quick == True & arc == False:
+                ##clean obvious high outliers 
+                toohigh         = np.where( tblock > 15.0 * np.median( tblock ) )
+                tblock[toohigh] = np.median( tblock )
+                tsnr[toohigh]   = 0.000001
             
             if (quick == False) & (arc == False):   
 
                 ##clean obvious high outliers 
-                # toohigh         = np.where( tblock > 10.0 * np.median( tblock ) )
-                # tblock[toohigh] = np.median( tblock )
-                # tsnr[toohigh]   = 0.000001
+                toohigh         = np.where( tblock > 15.0 * np.median( tblock ) )
+                tblock[toohigh] = np.median( tblock )
+                tsnr[toohigh]   = 0.000001
                 tnoise          = np.absolute( tblock / ( tsnr ) )
 
                 ##clean zero values (often due to chip artifacts that aren't caught)
@@ -385,9 +394,12 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
                 cutresid       = np.percentile( bestresid.flatten() , 99.99 )
                 badcut         = np.where( bestresid > cutresid )
 
-               # plt.imshow( tsnr, aspect = 'auto' )
-               # plt.plot( badcut[1], badcut[0], 'ro' )
-               # plt.show()
+                # if ord == 39:
+                #     plt.clf()
+                #     plt.imshow( tsnr, aspect = 'auto' )
+                #     plt.plot( badcut[1], badcut[0], 'ro' )
+                #     plt.show()
+                #     pdb.set_trace()
                 
                 tblock[badcut] = np.median( tblock )
                 tsnr[badcut]   = 0.00001
@@ -448,10 +460,12 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
                     slice_snr[bads] = 0.0001 ##set their SNR to effective zero
                     if len(bads) > 3: slice_snr = slice_snr*0.000+0.0001 ##if there are three bad points of more, kill the whole pixel position
 
-                    # plt.plot( thisx, slice, 'k-' )
-                    # plt.plot( thisx, GaussModel( thisx, slicepars ), 'r-' )
-                    # plt.plot( thisx[bads], slice[bads], 'bx' )
-                    # plt.show()
+                    # if len(bads) > 0:
+                    #     plt.clf()
+                    #     plt.plot( thisx, slice, 'k-' )
+                    #     plt.plot( thisx, GaussModel( thisx, slicepars ), 'r-' )
+                    #     plt.plot( thisx[bads], slice[bads], 'bx' )
+                    #     plt.show()
 
                     # pdb.set_trace()
 
@@ -480,6 +494,7 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
                 badlow = np.where(flux[frm,ord] <=1)
                 error[frm,ord,badlow] = np.median(flux[frm,ord])
 
+    # return flux[tfrm], error[tfrm]
     return flux,error
 
 ########## WAVELENGTH CALIBRATION FUNCTIONS AND WHAT NOT ##########

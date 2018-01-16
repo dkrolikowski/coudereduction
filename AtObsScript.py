@@ -5,8 +5,8 @@ import os, readcol, pickle, pdb
 
 class Configs():
     def __init__( self ):
-        self.dir     = os.getenv("HOME") + '/Research/YMG/coude_data/20161205/'
-        self.rdir    = self.dir + 'reduction/'
+        self.dir     = os.getenv("HOME") + '/Research/YMG/coude_data/20171102/'
+        self.rdir    = self.dir + 'quickreduction/'
         self.codedir = os.getenv("HOME") + '/codes/coudereduction/'
 
         self.CalsDone   = False
@@ -35,6 +35,7 @@ raw_input( 'If that isn\'t right ctrl-c outta this! Otherwise just hit enter.\n'
 os.chdir(Conf.dir)
 
 Fns.Header_Info( Conf.dir, Conf.InfoFile )
+pdb.set_trace()
 
 FileInfo = pd.read_csv( Conf.InfoFile )
 
@@ -52,6 +53,8 @@ BPM = Fns.Make_BPM( SuperBias, FlatField, 99.9, Conf )
 ArcCube, ArcSNR, ObjCube, ObjSNR = Fns.Return_Cubes( ArcInds, ObjInds, FileInfo, DarkCube, SuperBias, FlatField, BPM )
 
 MedTrace, FitTrace = Fns.Get_Trace( FlatField, ObjCube, Conf )
+
+FitTrace = FitTrace[:58] # Just make it the same shape as last year's runs
 
 if Conf.ArcExDone:
     wspec     = pickle.load( open( Conf.rdir + 'extracted_wspec.pkl', 'rb' ) )
