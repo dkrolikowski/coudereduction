@@ -1,4 +1,14 @@
-import glob, os, pdb, readcol, pickle, mpyfit
+##### FUNCTIONS FOR REDUCING COUDE SPECTRA #####
+##### Daniel Krolikowski, Aaron Rizzuto #####
+##### Used on data from the tull coude on the 2.7m at McDonald #####
+
+###################################################################################################
+
+### IMPORTS ###
+
+from __future__ import print_function
+
+import glob, os, pdb, pickle, mpyfit
 
 import matplotlib as mpl
 mpl.use('TkAgg')
@@ -11,7 +21,10 @@ import pandas as pd
 
 from astropy.io import fits
 from scipy import signal
-from mpfit import mpfit
+
+###################################################################################################
+
+### FUNCTIONS ###
 
 def Header_Info( dir, outname ):
 
@@ -84,29 +97,29 @@ def Basic_Cals( BiasFiles, FlatFiles, Conf ):
 
     if Conf.CalsDone == False:
         # Create master bias
-        print 'Reading Bias Files'
+        print( 'Reading Bias Files' )
         SuperBias = Build_Bias( BiasFiles )
         pickle.dump( SuperBias, open( Conf.rdir + 'bias.pkl', 'wb' ) )
 
         # Create master flat
-        print 'Reading Flat Files'
+        print( 'Reading Flat Files' )
         FlatField = Build_Flat_Field( FlatFiles, SuperBias )
         pickle.dump( FlatField, open( Conf.rdir + 'flat.pkl', 'wb' ) )
 
     elif Conf.CalsDone == True:
-        print 'Reading in premade Bias and Flat files'
+        print( 'Reading in premade Bias and Flat files' )
         SuperBias  = pickle.load( open( Conf.rdir + 'bias.pkl', 'rb' ) )
         FlatField  = pickle.load( open( Conf.rdir + 'flat.pkl', 'rb' ) )
 
     plt.clf()
     plt.imshow( np.log10( SuperBias ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
     plt.colorbar(); plt.savefig( Conf.rdir + 'plots/bias.pdf' )
-    if Conf.PlotsOn: print 'Plotting Bias:\n'; plt.show()
+    if Conf.PlotsOn: print( 'Plotting Bias:\n' ); plt.show()
 
     plt.clf()
     plt.imshow( np.log10( FlatField ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
     plt.colorbar(); plt.savefig( Conf.rdir + 'plots/flat.pdf' )
-    if Conf.PlotsOn: print 'Plotting FlatField:\n'; plt.show()
+    if Conf.PlotsOn: print( 'Plotting FlatField:\n' ); plt.show()
         
     return SuperBias, FlatField
 
@@ -119,7 +132,7 @@ def Make_BPM( Bias, Flat, CutLevel, Conf ):
     plt.imshow( np.log10( Bias ), aspect = 'auto', interpolation = 'none' )
     plt.plot( BPM[1], BPM[0], 'r,' ) # Invert x,y for imshow
     plt.savefig( Conf.rdir + 'plots/bpm.pdf' )
-    if Conf.PlotsOn: print 'Plotting BPM over Bias:\n'; plt.show()
+    if Conf.PlotsOn: print( 'Plotting BPM over Bias:\n' ); plt.show()
 
     return BPM
 
@@ -252,13 +265,13 @@ def Get_Trace( Flat, Cube, Conf ):
     orderzeros, ordervals = Find_Orders( Flat, orderstart )
     
     if Conf.TraceDone == False:
-        print 'Performing preliminary trace'
+        print( 'Performing preliminary trace' )
 
         plt.clf()
         plt.plot( Flat[:,orderstart], 'k-' )
         plt.plot( orderzeros, ordervals, 'ro' )
         plt.savefig( Conf.rdir + 'plots/prelimtrace.pdf' )
-        if Conf.PlotsOn: print 'Plotting prelim trace:\n'; plt.show()
+        if Conf.PlotsOn: print( 'Plotting prelim trace:\n' ); plt.show()
 
         meds      = [ np.median( Cube[i,:,:2048] ) for i in range( Cube.shape[0] ) ]
         abovemed  = Cube[ np.where( meds >= np.percentile( meds, Conf.MedCut ) ) ]
@@ -269,12 +282,12 @@ def Get_Trace( Flat, Cube, Conf ):
         if FitTrace[0,-1] <= 10.0:
             MedTrace = MedTrace[1:]
             FitTrace = FitTrace[1:]
-        print 'Saving median trace to file'
+        print( 'Saving median trace to file' )
         pickle.dump( MedTrace, open( Conf.rdir + 'median_trace.pkl', 'wb' ) )
         pickle.dump( FitTrace, open( Conf.rdir + 'fitted_trace.pkl', 'wb' ) )
 
     elif Conf.TraceDone == True:
-        print 'Reading in premade Trace and plotting on Flat:'
+        print( 'Reading in premade Trace and plotting on Flat:' )
         MedTrace = pickle.load( open( Conf.rdir + 'median_trace.pkl', 'rb' ) )
         FitTrace = pickle.load( open( Conf.rdir + 'fitted_trace.pkl', 'rb' ) )
 
@@ -285,7 +298,7 @@ def Get_Trace( Flat, Cube, Conf ):
     plt.xlim( 0, 2048 )
     plt.ylim( 2048, 0 )
     plt.savefig( Conf.rdir + 'plots/trace.pdf' )
-    if Conf.PlotsOn: print 'Plotting trace over Flat:\n'; plt.show()
+    if Conf.PlotsOn: print( 'Plotting trace over Flat:\n' ); plt.show()
 
     return MedTrace, FitTrace
 
@@ -332,7 +345,7 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
     
     for frm in [ 0, 32 ]:
     # for frm in range( cube.shape[0] ):
-        print "Extracting Frame " + str(frm+1) +" out of " + str(cube.shape[0])
+        print( 'Extracting Frame', str( frm + 1 ), 'out of', str( cube.shape[0] ) )
         thisfrm = cube[frm,:,:]
         thissnr = cube_snr[frm,:,:]
 
@@ -384,7 +397,7 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
                 ordpars, ordres = mpyfit.fit( Least, p0, ( (x,y), tblock, tnoise, OrderModel ) )
 
                 if ordres['status'] == -16:
-                    print 'mpyfit for this order failed?'
+                    print( 'mpyfit for this order failed?' )
                     pdb.set_trace()
 
                 bestmod, besttrace, bestpeak, bestsigmas = OrderModel( (x,y), ordpars, return_full = True )
@@ -409,8 +422,8 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
                 peakshape      = np.sum( bestmod, axis = 1 )
                 block_bg       = ordpars[5]
                 block_sigma    = ordpars[4]
-
-            print "Extracting Ord " + str(ord+1) +" out of " + str(trace.shape[0]) + " for frame " + str(frm+1) + " of " + str(cube.shape[0])
+                
+            print( 'Extracting Ord', str( ord + 1 ), 'out of', str( trace.shape[0] ), 'for frame', str( frm + 1 ), 'of', str( cube.shape[0] ) )
 
             savesigma = np.zeros(trace.shape[1])
             savepeak  = np.zeros(trace.shape[1])
@@ -426,7 +439,7 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
                 snoise[snoise==0.0] = 0.00001
                 qwe       = np.where(slice_snr < 0.0)[0]
                 if len(qwe) >= 1: 
-                    print 'Slice SNR is bad, bugshoot!!!'
+                    print( 'Slice SNR is bad, bugshoot!!!' )
                     pdb.set_trace()
                 
                 ##decide which extraction we do, e.g. a fast one, a detailed fit, or just get arc lines
@@ -485,7 +498,7 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
                 final_snr = np.absolute(flux[frm,ord,pix]/final_sig)
 
                 if final_snr <0: 
-                    print 'something has gone wrong, negative errors!!??!!'
+                    print( 'something has gone wrong, negative errors!!??!!' )
                     pdb.set_trace()            
     
                 error[frm,ord,pix] = final_sig*1.0
@@ -555,7 +568,7 @@ def Get_WavSol( Cube, CubeSig, Conf, plots = True, Frames = 'All', Orders = 'All
         orderdif = Get_Shift( filtcube[0], compspec )
 
         if orderdif < 0 or orderdif + Cube.shape[0] > roughsol.shape[0]:
-            print orderdif
+            print( orderdif )
             raw_input( 'Problem with number of orders found.\n' )
 
         FullWavSol  = np.zeros( ( Cube.shape[0], Cube.shape[1], Cube.shape[2] ) )
@@ -624,7 +637,7 @@ def Get_WavSol( Cube, CubeSig, Conf, plots = True, Frames = 'All', Orders = 'All
         pickle.dump( FullWavSol, open( Conf.rdir + 'wavsol.pkl', 'wb' ) )
         pickle.dump( FullParams, open( Conf.rdir + 'wavparams.pkl', 'wb' ) )
     
-        print badorders
+        print( badorders )
     return FullWavSol
 
 def Find_Peaks( wav, spec, specsig, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
@@ -671,7 +684,7 @@ def Find_Peaks( wav, spec, specsig, peaksnr = 5, pwidth = 10, minsep = 0.5 ):
 
         except RuntimeError:
             pixval = 0
-            #print 'RuntimeError'
+            #print( 'RuntimeError' )
             #pdb.set_trace()
     
     vals = spec[pixcent.astype(int)]
@@ -775,8 +788,8 @@ def Fit_WavSol( wav, spec, specsig, THARcat, path, THAR, snr = 5, minsep = 0.5, 
                 cutoff = 2.0 / 0.67449
                 
             else:
-                print 'There is something seriously wrong.\n'
-                print 'There are points > 0.2 km/s, but none are found to be rejected. FIX'
+                print( 'There is something seriously wrong.\n' )
+                print( 'There are points > 0.2 km/s, but none are found to be rejected. FIX' )
                 flag = True
                 if plots:
                     plotname = path + '/resids_round_' + str(ploti) + '_flag.pdf'
@@ -888,7 +901,7 @@ def Interpolate_Obj_WavSol( wavsol, info, arcinds, objinds, Conf ):
             deltime = objtime[i] - arctime
 
             if np.max( arctime ) < objtime[i] or np.min( arctime ) > objtime[i]:
-                print 'Target obs ' + str(i+1) + ' not bounded by arcs, using closest arc.'
+                print( 'Target obs', str( i + 1 ), 'not bounded by arcs, using closest arc.' )
                 closest     = np.argmin( np.abs( deltime ) )
                 Wsol_Obj[i] = wavsol[closest]
             else:
