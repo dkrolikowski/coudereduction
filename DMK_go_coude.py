@@ -65,6 +65,9 @@ def Header_Info( dir, outname ):
     outfile.close()
     return None
 
+## Basic Calibration functions ##
+# Subtracting bias and flat fielding
+
 def Build_Bias( files ):
 
     testframe = fits.open( files[0] )
@@ -122,6 +125,8 @@ def Basic_Cals( BiasFiles, FlatFiles, Conf ):
     if Conf.PlotsOn: print( 'Plotting FlatField:\n' ); plt.show()
         
     return SuperBias, FlatField
+
+## Make data cubes -- raw 2D spectra for each exposure (arc and object) ##
 
 def Make_BPM( Bias, Flat, CutLevel, Conf ):
 
