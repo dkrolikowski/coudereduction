@@ -20,23 +20,24 @@ import scipy.interpolate as interp
 import pandas as pd
 
 from astropy.io import fits
+from astropy.time import Time
 from scipy import signal
 
 ###################################################################################################
 
 ### FUNCTIONS ###
 
-def Header_Info( dir, outname ):
+def Header_Info( Conf ):
 
-    os.chdir(dir)
+    os.chdir( Conf.dir )
     files = glob.glob( '*.fits' )
 
-    outfile = open( outname, 'wb' )
+    outfile = open( Conf.InfoFile, 'wb' )
     heading = 'File,Object,RA,DEC,Type,ExpTime,Order,Airmass,UTdate,UT,gain,rdn,zenith\n'
-    outfile.write(heading)
+    outfile.write( heading )
     
     for i in range( len( files ) ):
-        hdulist    = fits.open(files[i])
+        hdulist    = fits.open( files[i] )
         head       = hdulist[0].header
         itype      = head["imagetyp"]
         if len(files[i].split('.')) > 2: itype = "unknown"
@@ -59,7 +60,7 @@ def Header_Info( dir, outname ):
         utdate  = head["DATE-OBS"]
         zd = head["ZD"]
         line = files[i] +','+object + ','+ ra +','+ dec+','+ itype+','+exptime+','+order+','+ air+','+utdate+','+ UT +','+gain+','+rdn+','+zd+' \n' 
-        outfile.write(line)
+        outfile.write( line )
         outfile.flush()
 
     outfile.close()
@@ -69,6 +70,7 @@ def Header_Info( dir, outname ):
 # Subtracting bias and flat fielding
 
 def Build_Bias( files ):
+    # Making the master bias
 
     testframe = fits.open( files[0] )
     testdata  = testframe[0].data
@@ -82,6 +84,7 @@ def Build_Bias( files ):
     return SuperBias
 
 def Build_Flat_Field( files, SuperBias ):
+    # Making the master flat
 
     testframe = fits.open( files[0] )
     testdata  = testframe[0].data
@@ -97,6 +100,7 @@ def Build_Flat_Field( files, SuperBias ):
     return FlatField
     
 def Basic_Cals( BiasFiles, FlatFiles, Conf ):
+    # Getting master bias and flat
 
     if Conf.CalsDone == False:
         # Create master bias
@@ -129,6 +133,7 @@ def Basic_Cals( BiasFiles, FlatFiles, Conf ):
 ## Make data cubes -- raw 2D spectra for each exposure (arc and object) ##
 
 def Make_BPM( Bias, Flat, CutLevel, Conf ):
+    # Make bad pixel mask
 
     cutbias = np.percentile( Bias, CutLevel )
     BPM     = np.where( ( Bias > cutbias ) | ( Flat <= 0.0001 ) )
@@ -142,6 +147,7 @@ def Make_BPM( Bias, Flat, CutLevel, Conf ):
     return BPM
 
 def Make_Cube( Files, ReadNoise, DarkCur, Bias = None, Flat = None, BPM = None ):
+    # Make the cubes for a certain set of files
 
     for i in range( len( Files ) ):
         frame = fits.open( Files[i] )[0].data
@@ -166,6 +172,7 @@ def Make_Cube( Files, ReadNoise, DarkCur, Bias = None, Flat = None, BPM = None )
     return Cube, SNR
 
 def Return_Cubes( ArcInds, ObjInds, FileInfo, DarkCube, Bias, Flat, BPM ):
+    # Make the cubes and return to the script running the reduction
 
     ReadNoise       = FileInfo.rdn[ArcInds] / FileInfo.gain[ArcInds]
     DarkCur         = DarkCube[ArcInds] / FileInfo.gain[ArcInds]
@@ -176,8 +183,12 @@ def Return_Cubes( ArcInds, ObjInds, FileInfo, DarkCube, Bias, Flat, BPM ):
     ObjCube, ObjSNR = Make_Cube( FileInfo.File[ObjInds].values, ReadNoise.values, DarkCur.values, Bias = Bias, Flat = Flat, BPM = BPM )
 
     return ArcCube, ArcSNR, ObjCube, ObjSNR
+
+## Do the trace ##
         
 def Start_Trace( flatslice, percent ):
+    # Get the values for orders across an arbitrary flat slice
+    # Also re-centers the found points
 
     fgrad    = np.gradient( flatslice )
     cutvalue = np.percentile( abs( fgrad ), percent )
@@ -208,6 +219,8 @@ def Start_Trace( flatslice, percent ):
     return orderzeros, ordervals
 
 def Find_Orders( Flat, orderstart ):
+    # Get the starting values for the trace on the edge
+    # Uses flat slices at edge and in middle and uses that to refine initial points
 
     midpoint = ( Flat.shape[1] + orderstart ) / 2
 
@@ -230,41 +243,42 @@ def Find_Orders( Flat, orderstart ):
 
     return finalzeros, finalvals
 
-
-def Full_Trace( Cube, orderzeros, orderstart ):
+def Full_Trace( brightcube, orderzeros, orderstart ):
+    # Get the full 2D trace using the brightest object images
 
     numord = len( orderzeros )
-    trace  = np.zeros( ( Cube.shape[0], numord, Cube.shape[2] + orderstart ) )
+    trace  = np.zeros( ( brightcube.shape[0], numord, brightcube.shape[2] + orderstart ) )
 
-    for i in range( Cube.shape[0] ):
-        for pix in range( 1, Cube.shape[2] + orderstart + 1 ):
+    for i in range( brightcube.shape[0] ):
+        for pix in range( 1, brightcube.shape[2] + orderstart + 1 ):
             prev = orderzeros
             if pix > 1: prev = trace[i,:,-pix+1]
-            m1d = Cube[i,:,-pix+orderstart]
+            m1d = brightcube[i,:,-pix+orderstart]
             for order in range( numord ):
                 edge1 = int(prev[order] - 3)
                 if edge1 < 0: edge1 = 0
                 trace[i,order,-pix] = edge1 + np.argmax( m1d[edge1:edge1+6] )
                 if pix != 1:
                     if ( trace[i,order,-pix] > prev[order] + 2 ) or ( trace[i,order,-pix] < prev[order] - 2 ):
-                    #if prev[order] - 2 > trace[i,order,-pix] > prev[order] + 2:
                         trace[i,order,-pix] = prev[order]
 
     return trace
 
 def Fit_Trace( Trace ):
+    # Fit the trace with a 3rd order polynomial
 
     FitTrace = np.zeros( ( Trace.shape[0], 2048 ) )
     
     for order in range( Trace.shape[0] ):
 
         poly            = np.polyfit( np.arange( Trace.shape[1] ), Trace[order,:], 3 )
-        vals            = np.polyval( poly, np.arange( 2048 ) )
-        FitTrace[order] = vals
+        FitTrace[order] = np.polyval( poly, np.arange( 2048 ) )
 
     return FitTrace
 
 def Get_Trace( Flat, Cube, Conf ):
+    # Top function to start trace, get trace, fit trace
+    # Returns the median trace and the fit trace
 
     orderstart            = -33
     orderzeros, ordervals = Find_Orders( Flat, orderstart )
@@ -274,7 +288,7 @@ def Get_Trace( Flat, Cube, Conf ):
 
         plt.clf()
         plt.plot( Flat[:,orderstart], 'k-' )
-        plt.plot( orderzeros, ordervals, 'ro' )
+        plt.plot( orderzeros, ordervals, 'r+' )
         plt.savefig( Conf.rdir + 'plots/prelimtrace.pdf' )
         if Conf.PlotsOn: print( 'Plotting prelim trace:\n' ); plt.show()
 
@@ -284,6 +298,7 @@ def Get_Trace( Flat, Cube, Conf ):
         trace     = Full_Trace( abovemed, orderzeros, orderstart )
         MedTrace  = np.median( trace, axis = 0 )
         FitTrace  = Fit_Trace( MedTrace )
+        # Make sure the top order is a full order and doesn't spill over top of image
         if FitTrace[0,-1] <= 10.0:
             MedTrace = MedTrace[1:]
             FitTrace = FitTrace[1:]
@@ -299,7 +314,7 @@ def Get_Trace( Flat, Cube, Conf ):
     plt.clf()
     plt.imshow( np.log10( Flat ), aspect = 'auto', cmap = plt.get_cmap( 'gray' ) )
     for i in range( FitTrace.shape[0] ):
-        plt.plot( FitTrace[i,:], 'r-' )
+        plt.plot( FitTrace[i,:], 'r-', lw = 1.0 )
     plt.xlim( 0, 2048 )
     plt.ylim( 2048, 0 )
     plt.savefig( Conf.rdir + 'plots/trace.pdf' )
@@ -307,16 +322,25 @@ def Get_Trace( Flat, Cube, Conf ):
 
     return MedTrace, FitTrace
 
+## Extraction ## 
+
+# First some set up for fitting orders/pixel slices ##
+    
 def Least( p, args ):
+    # A function returning the difference between data and a model for mpyfit
+    
     X, vals, err, func = args
+    
     if err is not None:
-        dif = ( vals - func( X, p ) ) / err
+        dif = ( vals - func( X, p ) ) / err # Use error if wanted
     else:
         dif = vals - func( X, p )
 
-    return dif.ravel()
+    return dif.ravel() # Use ravel() to turn multidimensional arrays in 1D
 
 def OrderModel( X, p, return_full = False ):
+    # A 2D model of an order
+    
     x, y = X
     
     ##order trace residual (parabola)
@@ -335,44 +359,48 @@ def OrderModel( X, p, return_full = False ):
     else: return model, means, peaks, sigmas
 
 def GaussModel( X, p ):
+    # A 1D gaussian model
+    
     x = X
 
     model = p[0] * np.exp( - ( x - p[1] ) ** 2.0 / ( 2.0 * p[2] ** 2.0 ) ) + p[3]
 
     return model
 
-def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
+# The function to actual do the spectrum extraction
 
-    flux  = np.zeros( ( cube.shape[0], trace.shape[0], trace.shape[1] ) )
+def Extractor( Cube, SNR, Trace, quick = True, arc = False, nosub = True ):
+
+    flux  = np.zeros( ( Cube.shape[0], Trace.shape[0], Trace.shape[1] ) )
     error = flux * 0.0
 
-    tfrm = 0
+    # tfrm = 0
     
-    for frm in [ 0, 32 ]:
-    # for frm in range( cube.shape[0] ):
-        print( 'Extracting Frame', str( frm + 1 ), 'out of', str( cube.shape[0] ) )
-        thisfrm = cube[frm,:,:]
-        thissnr = cube_snr[frm,:,:]
+    # for frm in [ 0, 32 ]:
+    for frm in range( Cube.shape[0] ):
+        print( 'Extracting Frame', str( frm + 1 ), 'out of', str( Cube.shape[0] ) )
+        thisfrm = Cube[frm,:,:]
+        thissnr = SNR[frm,:,:]
 
-        for ord in range( trace.shape[0] ):
+        for ord in range( Trace.shape[0] ):
 
-            tblock = np.zeros( ( trace.shape[1], 16 ) )
+            tblock = np.zeros( ( Trace.shape[1], 16 ) )
             tsnr   = tblock.copy()
             x, y   = [ c.T for c in np.meshgrid( np.arange( tblock.shape[0] ), np.arange( tblock.shape[1] ) ) ]
 
-            # for pix in range( trace.shape[1] ):
-            #     low           = np.round(trace[ord,pix]).astype(int) - 8
-            #     high          = np.round(trace[ord,pix]).astype(int) + 8
-            #     tblock[pix,:] = thisfrm[low:high,pix]
-            #     tsnr[pix,:]   = thissnr[low:high,pix]
+#            for pix in range( Trace.shape[1] ):
+#                low           = np.round(Trace[ord,pix]).astype(int) - 8
+#                high          = np.round(Trace[ord,pix]).astype(int) + 8
+#                tblock[pix,:] = thisfrm[low:high,pix]
+#                tsnr[pix,:]   = thissnr[low:high,pix]
 
-            for pix in range( trace.shape[1] ):
-                low           = np.round(trace[ord,pix]).astype(int) - 10
-                high          = np.round(trace[ord,pix]).astype(int) + 10
-                tblock[pix,:] = np.interp( np.linspace(trace[ord,pix] - 8, trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thisfrm[low:high,pix] )
-                tsnr[pix,:]   = np.interp( np.linspace(trace[ord,pix] - 8, trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thissnr[low:high,pix] )
+            for pix in range( Trace.shape[1] ):
+                low           = np.round(Trace[ord,pix]).astype(int) - 10
+                high          = np.round(Trace[ord,pix]).astype(int) + 10
+                tblock[pix,:] = np.interp( np.linspace(Trace[ord,pix] - 8, Trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thisfrm[low:high,pix] )
+                tsnr[pix,:]   = np.interp( np.linspace(Trace[ord,pix] - 8, Trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thissnr[low:high,pix] )
 
-            # pdb.set_trace()
+#            pdb.set_trace()
 
             if quick == True & arc == False:
                 ##clean obvious high outliers 
@@ -412,31 +440,31 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
                 cutresid       = np.percentile( bestresid.flatten() , 99.99 )
                 badcut         = np.where( bestresid > cutresid )
 
-                # if ord == 39:
-                #     plt.clf()
-                #     plt.imshow( tsnr, aspect = 'auto' )
-                #     plt.plot( badcut[1], badcut[0], 'ro' )
-                #     plt.show()
-                #     pdb.set_trace()
+#                if ord == 39:
+#                    plt.clf()
+#                    plt.imshow( tsnr, aspect = 'auto' )
+#                    plt.plot( badcut[1], badcut[0], 'ro' )
+#                    plt.show()
+#                    pdb.set_trace()
                 
                 tblock[badcut] = np.median( tblock )
                 tsnr[badcut]   = 0.00001
                 thistrace      = besttrace[:,0].copy()
                 thispeak       = bestpeak[:,0].copy()
                 thissigma      = bestsigmas[:,0].copy()
-                peakshape      = np.sum( bestmod, axis = 1 )
+#                peakshape      = np.sum( bestmod, axis = 1 )
                 block_bg       = ordpars[5]
-                block_sigma    = ordpars[4]
+#                block_sigma    = ordpars[4]
                 
-            print( 'Extracting Ord', str( ord + 1 ), 'out of', str( trace.shape[0] ), 'for frame', str( frm + 1 ), 'of', str( cube.shape[0] ) )
+            print( 'Extracting Ord', str( ord + 1 ), 'out of', str( Trace.shape[0] ), 'for frame', str( frm + 1 ), 'of', str( Cube.shape[0] ) )
 
-            savesigma = np.zeros(trace.shape[1])
-            savepeak  = np.zeros(trace.shape[1])
-            savebg    = np.zeros(trace.shape[1])
-            savespot  = np.zeros(trace.shape[1])
+            savesigma = np.zeros(Trace.shape[1])
+            savepeak  = np.zeros(Trace.shape[1])
+            savebg    = np.zeros(Trace.shape[1])
+            savespot  = np.zeros(Trace.shape[1])
             
             #go pixel-by-pixel along the order
-            for pix in range(trace.shape[1]):
+            for pix in range(Trace.shape[1]):
                 slice     = tblock[pix,:]
                 slice_snr = tsnr[pix,:]
                 thisx     = np.arange(len(slice))
@@ -478,14 +506,14 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
                     slice_snr[bads] = 0.0001 ##set their SNR to effective zero
                     if len(bads) > 3: slice_snr = slice_snr*0.000+0.0001 ##if there are three bad points of more, kill the whole pixel position
 
-                    # if len(bads) > 0:
-                    #     plt.clf()
-                    #     plt.plot( thisx, slice, 'k-' )
-                    #     plt.plot( thisx, GaussModel( thisx, slicepars ), 'r-' )
-                    #     plt.plot( thisx[bads], slice[bads], 'bx' )
-                    #     plt.show()
+#                    if len(bads) > 0:
+#                        plt.clf()
+#                        plt.plot( thisx, slice, 'k-' )
+#                        plt.plot( thisx, GaussModel( thisx, slicepars ), 'r-' )
+#                        plt.plot( thisx[bads], slice[bads], 'bx' )
+#                        plt.show()
 
-                    # pdb.set_trace()
+#                    pdb.set_trace()
 
                 ## if quick is true, simple minimum background
                 if quick   == True: bg = slice * 0.0 + np.min( np.absolute( slice ) )
@@ -512,12 +540,14 @@ def Extractor( cube, cube_snr, trace, quick = True, arc = False, nosub = True ):
                 badlow = np.where(flux[frm,ord] <=1)
                 error[frm,ord,badlow] = np.median(flux[frm,ord])
 
-    # return flux[tfrm], error[tfrm]
+#    return flux[tfrm], error[tfrm]
     return flux,error
 
-########## WAVELENGTH CALIBRATION FUNCTIONS AND WHAT NOT ##########
+## Wavelength Calibration ##
 
 def Smooth_Spec( spec, specsig ):
+    # Function to smooth the arc spectra
+    
     smoothed  = spec.copy()
     normfilt  = spec.copy()
     smoothsig = specsig.copy()
@@ -888,7 +918,7 @@ def Plot_Wavsol_Windows( wavsol, wavkeep, spec, THAR, path, frame, order ):
     
         return None
 
-########## WAVELENTH INTERPOLATION ##########
+## Wavelength Interpolation ##
 
 def Interpolate_Obj_WavSol( wavsol, info, arcinds, objinds, Conf ):
 
@@ -896,7 +926,8 @@ def Interpolate_Obj_WavSol( wavsol, info, arcinds, objinds, Conf ):
         Wsol_Obj = pickle.load( open( Conf.rdir + 'objwavsol.pkl', 'rb' ) )
 
     else:
-        juldays  = UT_Convert( info.UT.values, info.UTdate.values )
+        times    = ( info.UTdate.values + 'T' + info.UT.values ).astype( 'S22' )
+        juldays  = Time( times, format = 'isot', scale = 'utc' ).jd
         arctime  = juldays[arcinds]
         objtime  = juldays[objinds]
 
@@ -917,51 +948,6 @@ def Interpolate_Obj_WavSol( wavsol, info, arcinds, objinds, Conf ):
         pickle.dump( Wsol_Obj, open( Conf.rdir + 'objwavsol.pkl', 'wb' ) )
 
     return Wsol_Obj
-
-def Date_To_JD( year, month, day ):
-    '''
-    calculate julian day from calendar day
-    '''
-    if month == 1 or month == 2:
-        yearp  = year - 1
-        monthp = month + 12
-    else:
-        yearp  = year
-        monthp = month
-    
-    # this checks where we are in relation to October 15, 1582, the beginning
-    # of the Gregorian calendar.
-    if ((year < 1582) or
-        (year == 1582 and month < 10) or
-        (year == 1582 and month == 10 and day < 15)):
-        # before start of Gregorian calendar
-        B = 0
-    else:
-        # after start of Gregorian calendar
-        A = np.trunc(yearp / 100.)
-        B = 2 - A + np.trunc(A / 4.)
-        
-    if yearp < 0:
-        C = np.trunc((365.25 * yearp) - 0.75)
-    else:
-        C = np.trunc(365.25 * yearp)
-        
-    D  = np.trunc(30.6001 * (monthp + 1))
-    
-    jd = B + C + D + day + 1720994.5
-    
-    return jd  
-
-def UT_Convert( UT, UTdate ):
-    julday = np.zeros( len(UT) )
-    
-    for i in range( len(UT) ):
-        h, m, s     = np.array( UT[i].split(':') ).astype( np.float64 )
-        dayfrac     = h / 24.0 + m / 1440.0 + s / 86400.0
-        yr, mth, dy = np.array( UTdate[i].split('-') ).astype( np.float64 )
-        julday[i]   = Date_To_JD( yr, mth, dy + dayfrac )
-        
-    return julday
 
 ########## Spec Plots ##########
 
