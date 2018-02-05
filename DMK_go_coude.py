@@ -15,9 +15,8 @@ mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 
 import numpy as np
-import scipy.optimize as optim
-import scipy.interpolate as interp
 import pandas as pd
+import bspline_acr as bspl
 
 from astropy.io import fits
 from astropy.time import Time
@@ -948,6 +947,25 @@ def Interpolate_Obj_WavSol( wavsol, info, arcinds, objinds, Conf ):
         pickle.dump( Wsol_Obj, open( Conf.rdir + 'objwavsol.pkl', 'wb' ) )
 
     return Wsol_Obj
+
+## Continuum Fit ##
+    
+def getContinuum( spec, Conf ):
+    
+    thecont = spec.copy()
+    spec_cf = spec.copy()
+    
+    xarr    = np.arange( spec.shape[2], dtype = np.float )
+    
+    for i in range( spec.shape[0] ):
+        for j in range( spec.shape[1] ):
+            
+            spline = bspl.iterfit( xarr, spec[i,j], maxiter = 15, lower = 0.3, upper = 2.0, bkspace = 400, nord = 3 )[0]
+            
+            thecont[i,j] = spline.value( xarr )[0]
+            spec_cf[i.j] = spec[i,j] / thecont[i,j]
+            
+    return thecont, spec_cf
 
 ########## Spec Plots ##########
 
