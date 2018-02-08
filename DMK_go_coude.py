@@ -293,6 +293,8 @@ def Get_Trace( Flat, Cube, Conf ):
 
         meds      = [ np.median( Cube[i,:,:2048] ) for i in range( Cube.shape[0] ) ]
         abovemed  = Cube[ np.where( meds >= np.percentile( meds, Conf.MedCut ) ) ]
+        
+        pdb.set_trace()
 
         trace     = Full_Trace( abovemed, orderzeros, orderstart )
         MedTrace  = np.median( trace, axis = 0 )
@@ -302,8 +304,8 @@ def Get_Trace( Flat, Cube, Conf ):
             MedTrace = MedTrace[1:]
             FitTrace = FitTrace[1:]
         print( 'Saving median trace to file' )
-        pickle.dump( MedTrace, open( Conf.rdir + 'median_trace.pkl', 'wb' ) )
-        pickle.dump( FitTrace, open( Conf.rdir + 'fitted_trace.pkl', 'wb' ) )
+#        pickle.dump( MedTrace, open( Conf.rdir + 'median_trace.pkl', 'wb' ) )
+#        pickle.dump( FitTrace, open( Conf.rdir + 'fitted_trace.pkl', 'wb' ) )
 
     elif Conf.TraceDone == True:
         print( 'Reading in premade Trace and plotting on Flat:' )
@@ -316,7 +318,7 @@ def Get_Trace( Flat, Cube, Conf ):
         plt.plot( FitTrace[i,:], 'r-', lw = 1.0 )
     plt.xlim( 0, 2048 )
     plt.ylim( 2048, 0 )
-    plt.savefig( Conf.rdir + 'plots/trace.pdf' )
+    plt.savefig( Conf.rdir + 'plots/trace_again.pdf' )
     if Conf.PlotsOn: print( 'Plotting trace over Flat:\n' ); plt.show()
 
     return MedTrace, FitTrace

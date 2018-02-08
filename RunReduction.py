@@ -10,16 +10,16 @@ class Configs():
         self.codedir = os.getenv("HOME") + '/codes/coudereduction/'
 
         self.CalsDone   = True
-        self.TraceDone  = True
+        self.TraceDone  = False
         self.ArcExDone  = True
-        self.ObjExDone  = False
+        self.ObjExDone  = True
         self.ArcWavDone = True
         self.ObjWavDone = True
 
         self.PlotsOn    = False
 
         self.DarkCurVal = 0.0
-        self.MedCut     = 95.0
+        self.MedCut     = 90.0
 
         self.InfoFile   = 'headstrip.csv'
 
@@ -52,7 +52,7 @@ BPM = Fns.Make_BPM( SuperBias, FlatField, 99.9, Conf )
 ArcCube, ArcSNR, ObjCube, ObjSNR = Fns.Return_Cubes( ArcInds, ObjInds, FileInfo, DarkCube, SuperBias, FlatField, BPM )
 
 MedTrace, FitTrace = Fns.Get_Trace( FlatField, ObjCube, Conf )
-
+pdb.set_trace()
 # Just for now to make sure same orders are extracted.
 FitTrace = FitTrace[:58]
 

@@ -55,7 +55,7 @@ for night in nightarr:
     ArcCube, ArcSNR, ObjCube, ObjSNR = Fns.Return_Cubes( ArcInds, ObjInds, FileInfo, DarkCube, SuperBias, FlatField, BPM )
     
     MedTrace, FitTrace = Fns.Get_Trace( FlatField, ObjCube, Conf )
-    
+
     # Just for now to make sure same orders are extracted.
     FitTrace = FitTrace[:58]
     
