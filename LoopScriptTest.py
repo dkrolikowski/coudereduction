@@ -23,7 +23,7 @@ for night in nightarr:
             self.PlotsOn    = False
     
             self.DarkCurVal = 0.0
-            self.MedCut     = 95.0
+            self.MedCut     = 90.0
     
             self.InfoFile   = 'headstrip.csv'
     
