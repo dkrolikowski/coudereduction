@@ -68,7 +68,7 @@ def Header_Info( Conf ):
 ## Basic Calibration functions ##
 # Subtracting bias and flat fielding
 
-def Build_Bias( files ):
+def Build_Bias( files, readnoise ):
     # Making the master bias
 
     testframe = fits.open( files[0] )
@@ -77,12 +77,15 @@ def Build_Bias( files ):
 
     for i in range( len( files ) ):
         biascube[i] = fits.open( files[i] )[0].data
-
-    SuperBias = np.median( biascube, axis = 0 )
+        
+    SuperBias = {}
+    
+    SuperBias['vals'] = np.median( biascube, axis = 0 )
+    SuperBias['errs'] = np.sqrt( SuperBias['vals'] + readnoise[0] ** 2.0 )
 
     return SuperBias
 
-def Build_Flat_Field( files, SuperBias ):
+def Build_Flat_Field( files, readnoise, SuperBias ):
     # Making the master flat
 
     testframe = fits.open( files[0] )
@@ -90,45 +93,53 @@ def Build_Flat_Field( files, SuperBias ):
     flatcube  = np.zeros( ( len( files ), testdata.shape[0], testdata.shape[1] ) )
 
     for i in range( len( files ) ):
-        flatcube[i] = fits.open( files[i] )[0].data - SuperBias
+        flatcube[i] = fits.open( files[i] )[0].data
 
-    FlatField  = np.median( flatcube, axis = 0 )
-    FlatField -= np.min( FlatField )
-    FlatField /= np.max( FlatField )
+    FlatField = {}
+    
+    flatmedian = np.median( flatcube, axis = 0 )
+    flatvalues = flatmedian - SuperBias['vals']
+    
+    FlatField['errs'] = np.sqrt( flatmedian + readnoise[0] ** 2.0 + SuperBias['errs'] ** 2.0 )
+    FlatField['vals'] = flatvalues - flatvalues.min()
+    FlatField['errs'] = FlatField['errs'] / FlatField['vals'].max()
+    FlatField['vals'] = FlatField['vals'] / FlatField['vals'].max()
 
     return FlatField
     
-def Basic_Cals( BiasFiles, FlatFiles, Conf ):
-    # Getting master bias and flat
-
+def Basic_Cals( BiasInds, FlatInds, FileInfo, Conf ):
+    # Getting master bias and flat with errors
+    
     if Conf.CalsDone == False:
         # Create master bias
         print( 'Reading Bias Files' )
-        SuperBias = Build_Bias( BiasFiles )
+        biasrdn   = FileInfo.rdn[BiasInds].values / FileInfo.gain[BiasInds].values
+        SuperBias = Build_Bias( FileInfo.File[BiasInds].values, biasrdn )
         pickle.dump( SuperBias, open( Conf.rdir + 'bias.pkl', 'wb' ) )
-
+        
         # Create master flat
         print( 'Reading Flat Files' )
-        FlatField = Build_Flat_Field( FlatFiles, SuperBias )
+        flatrdn   = FileInfo.rdn[FlatInds].values / FileInfo.gain[FlatInds].values
+        FlatField = Build_Flat_Field( FileInfo.File[FlatInds].values, flatrdn, SuperBias )
         pickle.dump( FlatField, open( Conf.rdir + 'flat.pkl', 'wb' ) )
-
-    elif Conf.CalsDone == True:
-        print( 'Reading in premade Bias and Flat files' )
-        SuperBias  = pickle.load( open( Conf.rdir + 'bias.pkl', 'rb' ) )
-        FlatField  = pickle.load( open( Conf.rdir + 'flat.pkl', 'rb' ) )
-
-    plt.clf()
-    plt.imshow( np.log10( SuperBias ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
-    plt.colorbar(); plt.savefig( Conf.rdir + 'plots/bias.pdf' )
-    if Conf.PlotsOn: print( 'Plotting Bias:\n' ); plt.show()
-
-    plt.clf()
-    plt.imshow( np.log10( FlatField ), cmap = plt.get_cmap('gray'), aspect = 'auto', interpolation = 'none' )
-    plt.colorbar(); plt.savefig( Conf.rdir + 'plots/flat.pdf' )
-    if Conf.PlotsOn: print( 'Plotting FlatField:\n' ); plt.show()
         
+    elif Conf.CalsDone == True:
+        print ('Reading in premade Bias and Flat files' )
+        SuperBias = pickle.load( open( Conf.rdir + 'bias.pkl' ) )
+        FlatField = pickle.load( open( Conf.rdir + 'flat.pkl' ) )
+        
+    plt.clf()
+    plt.imshow( np.log10( SuperBias['vals'] ), cmap = plt.get_cmap( 'gray' ), aspect = 'auto', interpolation = 'none' )
+    plt.colorbar(); plt.savefig( Conf.rdir + 'plots/bias.pdf' )
+    if Conf.PlotsOn: print( 'Plotting Bias:' ); plt.show()
+    
+    plt.clf()
+    plt.imshow( np.log10( FlatField['vals'] ), cmap = plt.get_cmap( 'gray' ), aspect = 'auto', interpolation = 'none' )
+    plt.colorbar(); plt.savefig( Conf.rdir + 'plots/flat.pdf' )
+    if Conf.PlotsOn: print( 'Plotting Flat Field:' ); plt.show()
+    
     return SuperBias, FlatField
-
+    
 ## Make data cubes -- raw 2D spectra for each exposure (arc and object) ##
 
 def Make_BPM( Bias, Flat, CutLevel, Conf ):
@@ -136,6 +147,8 @@ def Make_BPM( Bias, Flat, CutLevel, Conf ):
 
     cutbias = np.percentile( Bias, CutLevel )
     BPM     = np.where( ( Bias > cutbias ) | ( Flat <= 0.0001 ) )
+    
+    pickle.dump( BPM, open( Conf.rdir + 'bpm.pkl', 'wb' ) )
 
     plt.clf()
     plt.imshow( np.log10( Bias ), aspect = 'auto', interpolation = 'none' )
@@ -145,7 +158,7 @@ def Make_BPM( Bias, Flat, CutLevel, Conf ):
 
     return BPM
 
-def Make_Cube( Files, ReadNoise, DarkCur, Bias = None, Flat = None, BPM = None ):
+def Make_Cube( Files, ReadNoise, DarkVal, Bias = None, Flat = None, BPM = None ):
     # Make the cubes for a certain set of files
 
     for i in range( len( Files ) ):
@@ -154,12 +167,27 @@ def Make_Cube( Files, ReadNoise, DarkCur, Bias = None, Flat = None, BPM = None )
         if i == 0:
             Cube = np.zeros( ( len( Files ), frame.shape[0], frame.shape[1] ) )
             SNR  = np.zeros( ( len( Files ), frame.shape[0], frame.shape[1] ) )
-
-        Cube[i] = frame - DarkCur[0]
-        SNR[i]  = Cube[i] / np.sqrt( Cube[i] + DarkCur[0] + ReadNoise[0] ** 2.0 )
-
-        if Bias is not None: Cube[i] -= Bias
-        if Flat is not None: Cube[i] /= Flat
+            
+        Cube[i] = frame - DarkVal[0]
+        CubeErr = np.sqrt( Cube[i] + DarkVal[0] + ReadNoise[i] ** 2.0 )
+        
+        # Test with the old way
+#        SNR[i]  = Cube[i] / CubeErr
+                        
+        CBerrVal = CubeErr ** 2.0 / Cube[i] ** 2.0
+        FerrVal  = 0.0
+        
+        if Bias is not None:
+            Cube[i] -= Bias['vals']
+            CBerrVal = ( CubeErr ** 2.0 + Bias['errs'] ** 2.0 ) / Cube[i] ** 2.0
+        if Flat is not None:
+            Cube[i] /= Flat['vals']
+            FerrVal  = ( Flat['errs'] / Flat['vals'] ) ** 2.0
+            
+        FullErr = np.sqrt( Cube[i] ** 2.0 * ( CBerrVal + FerrVal ) )
+        
+        SNR[i] = Cube[i] / FullErr
+                    
         if BPM  is not None:
             Cube[i, BPM[0], BPM[1]] = np.median( Cube[i] )
             SNR[i, BPM[0], BPM[1]]  = 0.001 # Effectively 0
@@ -167,19 +195,19 @@ def Make_Cube( Files, ReadNoise, DarkCur, Bias = None, Flat = None, BPM = None )
         wherenans = np.where( np.isnan( Cube[i] ) )
         Cube[i, wherenans[0], wherenans[1]] = 1.0
         SNR[i, wherenans[0], wherenans[1]]  = 0.001
-
+        
     return Cube, SNR
 
 def Return_Cubes( ArcInds, ObjInds, FileInfo, DarkCube, Bias, Flat, BPM ):
     # Make the cubes and return to the script running the reduction
 
     ReadNoise       = FileInfo.rdn[ArcInds] / FileInfo.gain[ArcInds]
-    DarkCur         = DarkCube[ArcInds] / FileInfo.gain[ArcInds]
-    ArcCube, ArcSNR = Make_Cube( FileInfo.File[ArcInds].values, ReadNoise.values, DarkCur.values, Bias = Bias )
+    DarkVal         = DarkCube[ArcInds] / FileInfo.gain[ArcInds]
+    ArcCube, ArcSNR = Make_Cube( FileInfo.File[ArcInds].values, ReadNoise.values, DarkVal.values, Bias = Bias )
 
     ReadNoise       = FileInfo.rdn[ObjInds] / FileInfo.gain[ObjInds]
-    DarkCur         = DarkCube[ObjInds] / FileInfo.gain[ObjInds]
-    ObjCube, ObjSNR = Make_Cube( FileInfo.File[ObjInds].values, ReadNoise.values, DarkCur.values, Bias = Bias, Flat = Flat, BPM = BPM )
+    DarkVal         = DarkCube[ObjInds] / FileInfo.gain[ObjInds]
+    ObjCube, ObjSNR = Make_Cube( FileInfo.File[ObjInds].values, ReadNoise.values, DarkVal.values, Bias = Bias, Flat = Flat, BPM = BPM )
 
     return ArcCube, ArcSNR, ObjCube, ObjSNR
 
@@ -292,20 +320,26 @@ def Get_Trace( Flat, Cube, Conf ):
         if Conf.PlotsOn: print( 'Plotting prelim trace:\n' ); plt.show()
 
         meds      = [ np.median( Cube[i,:,:2048] ) for i in range( Cube.shape[0] ) ]
-        abovemed  = Cube[ np.where( meds >= np.percentile( meds, Conf.MedCut ) ) ]
-        
-        pdb.set_trace()
-
+        abovemedi = np.where( meds >= np.percentile( meds, Conf.MedCut ) )
+        abovemed  = Cube[ abovemedi ]
+                
         trace     = Full_Trace( abovemed, orderzeros, orderstart )
+#        pickle.dump( meds, open( Conf.rdir + 'cubemeds.pkl', 'wb' ) )
+#        pickle.dump( trace, open( Conf.rdir + 'all_trace.pkl', 'wb' ) )
+        
         MedTrace  = np.median( trace, axis = 0 )
+#        index     = np.where( abovemedi[0] == np.argmax(meds) )
+#        FitTrace  = Fit_Trace( trace[index][0] )
+
         FitTrace  = Fit_Trace( MedTrace )
+        
         # Make sure the top order is a full order and doesn't spill over top of image
         if FitTrace[0,-1] <= 10.0:
             MedTrace = MedTrace[1:]
             FitTrace = FitTrace[1:]
         print( 'Saving median trace to file' )
-#        pickle.dump( MedTrace, open( Conf.rdir + 'median_trace.pkl', 'wb' ) )
-#        pickle.dump( FitTrace, open( Conf.rdir + 'fitted_trace.pkl', 'wb' ) )
+        pickle.dump( MedTrace, open( Conf.rdir + 'median_trace.pkl', 'wb' ) )
+        pickle.dump( FitTrace, open( Conf.rdir + 'fitted_trace.pkl', 'wb' ) )
 
     elif Conf.TraceDone == True:
         print( 'Reading in premade Trace and plotting on Flat:' )
@@ -318,7 +352,7 @@ def Get_Trace( Flat, Cube, Conf ):
         plt.plot( FitTrace[i,:], 'r-', lw = 1.0 )
     plt.xlim( 0, 2048 )
     plt.ylim( 2048, 0 )
-    plt.savefig( Conf.rdir + 'plots/trace_again.pdf' )
+    plt.savefig( Conf.rdir + 'plots/trace.pdf' )
     if Conf.PlotsOn: print( 'Plotting trace over Flat:\n' ); plt.show()
 
     return MedTrace, FitTrace
@@ -375,20 +409,24 @@ def Extractor( Cube, SNR, Trace, quick = True, arc = False, nosub = True ):
     flux  = np.zeros( ( Cube.shape[0], Trace.shape[0], Trace.shape[1] ) )
     error = flux * 0.0
 
-    # tfrm = 0
+#    tfrms = [ 0 ]
+#    tords = [ 45, 46 ]
     
-    # for frm in [ 0, 32 ]:
+#    for frm in tfrms:
     for frm in range( Cube.shape[0] ):
         print( 'Extracting Frame', str( frm + 1 ), 'out of', str( Cube.shape[0] ) )
         thisfrm = Cube[frm,:,:]
         thissnr = SNR[frm,:,:]
-
+        
+#        for ord in tords:
         for ord in range( Trace.shape[0] ):
+            
+            print( 'Extracting Ord', str( ord + 1 ), 'out of', str( Trace.shape[0] ), 'for frame', str( frm + 1 ), 'of', str( Cube.shape[0] ) )
 
             tblock = np.zeros( ( Trace.shape[1], 16 ) )
             tsnr   = tblock.copy()
             x, y   = [ c.T for c in np.meshgrid( np.arange( tblock.shape[0] ), np.arange( tblock.shape[1] ) ) ]
-
+            
 #            for pix in range( Trace.shape[1] ):
 #                low           = np.round(Trace[ord,pix]).astype(int) - 8
 #                high          = np.round(Trace[ord,pix]).astype(int) + 8
@@ -401,30 +439,41 @@ def Extractor( Cube, SNR, Trace, quick = True, arc = False, nosub = True ):
                 tblock[pix,:] = np.interp( np.linspace(Trace[ord,pix] - 8, Trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thisfrm[low:high,pix] )
                 tsnr[pix,:]   = np.interp( np.linspace(Trace[ord,pix] - 8, Trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thissnr[low:high,pix] )
 
-#            pdb.set_trace()
-
-            if quick == True & arc == False:
-                ##clean obvious high outliers 
-                toohigh         = np.where( tblock > 15.0 * np.median( tblock ) )
-                tblock[toohigh] = np.median( tblock )
-                tsnr[toohigh]   = 0.000001
+            # Here I will make any nan SNR values to be some small number
+            tsnr[np.isnan(tsnr)] = 1e-5
+            
+#            if ( quick == True ) & ( arc == False ):
+#                # Clean obvious high outliers 
+#                toohigh         = np.where( tblock > 15.0 * np.median( tblock ) )
+#                tblock[toohigh] = np.median( tblock )
+#                tsnr[toohigh]   = 0.000001
             
             if (quick == False) & (arc == False):   
 
-                ##clean obvious high outliers 
-                toohigh         = np.where( tblock > 15.0 * np.median( tblock ) )
-                tblock[toohigh] = np.median( tblock )
-                tsnr[toohigh]   = 0.000001
+                # Clean obvious high outliers 
+#                toohigh         = np.where( tblock > 15.0 * np.median( tblock ) )
+#                tblock[toohigh] = np.median( tblock )
+#                tsnr[toohigh]   = 0.000001
                 tnoise          = np.absolute( tblock / ( tsnr ) )
 
-                ##clean zero values (often due to chip artifacts that aren't caught)
-                toolow         = np.where( tblock <= 0 )
-                tblock[toolow] = np.median( tblock )
+                # Clean zero values (often due to chip artifacts that aren't caught)
+                                
+#                toolow         = np.where( tblock <= 0 )
+#                tblock[toolow] = np.median( tblock )
+#                tsnr[toolow]   = 0.00001
+#                tnoise[toolow] = np.median( tblock ) * 2.0
+#
+#                tnoise[tnoise==0.0] = 0.00001
+
+                
+                if np.median( tblock ) <= 0.0: val2use = 0.0
+                else: val2use = np.median( tblock )
+                toolow  = np.where( tblock <= 0.0 )
+                tblock[toolow] = val2use
                 tsnr[toolow]   = 0.00001
-                tnoise[toolow] = np.median( tblock ) * 2.0
-
-                tnoise[tnoise==0.0] = 0.00001
-
+                if val2use == 0.0: tnoise[toolow] = np.median( np.abs( tblock[tblock>0] ) )
+                else: tnoise[toolow] = np.median( tblock ) * 2.0
+                
                 p0             = np.zeros( 11 )
                 p0[[0,3,6,10]] = [ np.argmax( tblock[0,:] ), np.median( tblock[:,np.argmax( tblock[1000,:] )] ), 2.0, np.percentile( tblock, 2.0 ) ]
 
@@ -437,86 +486,98 @@ def Extractor( Cube, SNR, Trace, quick = True, arc = False, nosub = True ):
                 bestmod, besttrace, bestpeak, bestsigmas = OrderModel( (x,y), ordpars, return_full = True )
                 bestresid                                = ( tblock - bestmod ) / tnoise
 
-                ##now remove points that are obvious outliers from the best model
+                # Now remove points that are obvious outliers from the best model
                 cutresid       = np.percentile( bestresid.flatten() , 99.99 )
                 badcut         = np.where( bestresid > cutresid )
-
-#                if ord == 39:
-#                    plt.clf()
-#                    plt.imshow( tsnr, aspect = 'auto' )
-#                    plt.plot( badcut[1], badcut[0], 'ro' )
-#                    plt.show()
-#                    pdb.set_trace()
+                
+#                plt.clf()
+#                plt.figure()
+#                plt.imshow( tblock, aspect = 'auto' ); plt.title( 'data' )
+#                plt.figure()
+#                plt.imshow( bestmod, aspect = 'auto' ); plt.title( 'model' )
+#                plt.figure()
+#                plt.imshow( bestresid, aspect = 'auto' ); plt.title( 'resids' )
+#                plt.show()
+#                
+#                plt.clf()
+#                plt.imshow( tsnr, aspect = 'auto' )
+#                plt.plot( badcut[1], badcut[0], 'ro' )
+#                plt.show()
+#                
+#                pdb.set_trace()
                 
                 tblock[badcut] = np.median( tblock )
                 tsnr[badcut]   = 0.00001
                 thistrace      = besttrace[:,0].copy()
                 thispeak       = bestpeak[:,0].copy()
                 thissigma      = bestsigmas[:,0].copy()
-#                peakshape      = np.sum( bestmod, axis = 1 )
                 block_bg       = ordpars[5]
-#                block_sigma    = ordpars[4]
                 
-            print( 'Extracting Ord', str( ord + 1 ), 'out of', str( Trace.shape[0] ), 'for frame', str( frm + 1 ), 'of', str( Cube.shape[0] ) )
+#                peakshape      = np.sum( bestmod, axis = 1 )
+#                block_sigma    = ordpars[4]
 
             savesigma = np.zeros(Trace.shape[1])
             savepeak  = np.zeros(Trace.shape[1])
             savebg    = np.zeros(Trace.shape[1])
             savespot  = np.zeros(Trace.shape[1])
             
-            #go pixel-by-pixel along the order
+            # Go pixel-by-pixel along the order
             for pix in range(Trace.shape[1]):
-                slice     = tblock[pix,:]
-                slice_snr = tsnr[pix,:]
-                thisx     = np.arange(len(slice))
-                snoise    = np.absolute(slice/slice_snr)
+
+                slice          = tblock[pix,:]
+                slice_snr      = tsnr[pix,:]
+                qwe            = np.where( slice_snr < 0.0 )[0]
+                slice_snr[qwe] = 1e-4
+                thisx          = np.arange(len(slice))
+                snoise         = np.absolute(slice/slice_snr)
                 snoise[snoise==0.0] = 0.00001
-                qwe       = np.where(slice_snr < 0.0)[0]
-                if len(qwe) >= 1: 
-                    print( 'Slice SNR is bad, bugshoot!!!' )
-                    pdb.set_trace()
                 
-                ##decide which extraction we do, e.g. a fast one, a detailed fit, or just get arc lines
+#                if len(qwe) >= 1: 
+#                    print( 'Slice SNR is bad, bugshoot!!!' )
+#                    pdb.set_trace()
+                
+                # Decide which extraction we do, e.g. a fast one, a detailed fit, or just get arc lines
                 if quick == False: ##the detailed fit case
                     tspot     = thistrace[pix]
                     tpeak     = thispeak[pix]
                     tsigma    = thissigma[pix]
 
-                    ##set up an mpfit of the order profile
-                    ##initial parameters: peak height, peak centroid and peak width initalized from global order fit above, 
+                    # Set up an mpfit of the order profile
+                    # Initial parameters: peak height, peak centroid and peak width initalized from global order fit above, 
                     p0        = np.array( [ tpeak, tspot, tsigma, block_bg ] )
                     parinfo   = [ { 'limits': ( None, None ) } for i in range( len(p0) ) ]
-                    parinfo[1]['limits'] = ( p0[1] - 1.0, p0[1] + 1.0 )
-                    parinfo[2]['limits'] = ( p0[2] - 1.0, p0[2] + 2.0 )
+                    parinfo[1]['limits'] = ( p0[1] - 2.0, p0[1] + 2.0 )
+                    parinfo[2]['limits'] = ( p0[2] - 2.0, p0[2] + 2.0 )
 
-                    slicepars, sliceres  = mpyfit.fit( Least, p0, ( thisx, slice, snoise, GaussModel ), parinfo = parinfo )
+                    slicepars, sliceres  = mpyfit.fit( Least, p0, ( thisx, slice, snoise, GaussModel ), parinfo = parinfo, maxiter = 10 )
                     
                     savesigma[pix] = slicepars[2]
                     savespot[pix]  = slicepars[1]
                     savepeak[pix]  = slicepars[0]
                     savebg[pix]    = slicepars[3]
-                    bg     = slicepars[3]
+                    bg             = slicepars[3]
 
-                    #best model and residuals
+                    # Best model and residuals
                     themod = GaussModel( thisx, slicepars )
                     resids = ( slice - themod ) / snoise
 
-                    ##detect outlier where residuals are really large
-                    ##the cut value might need more thought 
-                    bads   = np.where( np.absolute( resids ) > 20 )[0]
+                    # Detect outlier where residuals are really large
+                    # The cut value might need more thought 
+                    bads   = np.where( np.absolute( resids ) > 50 )[0]
                     slice_snr[bads] = 0.0001 ##set their SNR to effective zero
                     if len(bads) > 3: slice_snr = slice_snr*0.000+0.0001 ##if there are three bad points of more, kill the whole pixel position
 
-#                    if len(bads) > 0:
+#                    if pix > 1068:
 #                        plt.clf()
 #                        plt.plot( thisx, slice, 'k-' )
 #                        plt.plot( thisx, GaussModel( thisx, slicepars ), 'r-' )
 #                        plt.plot( thisx[bads], slice[bads], 'bx' )
+#                        plt.axhline( y = bg, color = 'g' )
+#                        plt.title( 'Pixel: ' + str(pix) + ' Num Bad: ' + str(len(bads)) )
 #                        plt.show()
+#                        pdb.set_trace()
 
-#                    pdb.set_trace()
-
-                ## if quick is true, simple minimum background
+                # If quick is true, simple minimum background
                 if quick   == True: bg = slice * 0.0 + np.min( np.absolute( slice ) )
                 if nosub   == True: bg = slice * 0.0 ##case for no subtraction at all (e.g., arcs)
                 cslice     = slice - bg ## subtract the background, whatever the case was
@@ -541,7 +602,6 @@ def Extractor( Cube, SNR, Trace, quick = True, arc = False, nosub = True ):
                 badlow = np.where(flux[frm,ord] <=1)
                 error[frm,ord,badlow] = np.median(flux[frm,ord])
 
-#    return flux[tfrm], error[tfrm]
     return flux,error
 
 ## Wavelength Calibration ##
@@ -552,6 +612,7 @@ def Smooth_Spec( spec, specsig ):
     smoothed  = spec.copy()
     normfilt  = spec.copy()
     smoothsig = specsig.copy()
+    allfilt   = spec.copy()
     
     for i in range( spec.shape[0] ):
         for j in range( spec.shape[1] ):
@@ -562,8 +623,9 @@ def Smooth_Spec( spec, specsig ):
             smoothed[i,j]  /= filtered
             smoothsig[i,j] /= filtered
             normfilt[i,j]   = filtered / np.max( filtered )
+            allfilt[i,j]    = filtered
 
-    return smoothed, smoothsig, normfilt
+    return smoothed, smoothsig, normfilt, allfilt
 
 def Get_Shift( cube, comp ):
     
@@ -952,12 +1014,13 @@ def Interpolate_Obj_WavSol( wavsol, info, arcinds, objinds, Conf ):
 
 ## Continuum Fit ##
     
-def getContinuum( spec, Conf ):
+def getContinuum( spec, sigspec, Conf ):
     
-    thecont = spec.copy()
-    spec_cf = spec.copy()
+    thecont    = spec.copy()
+    spec_cf    = spec.copy()
+    sigspec_cf = spec.copy()
     
-    xarr    = np.arange( spec.shape[2], dtype = np.float )
+    xarr       = np.arange( spec.shape[2], dtype = np.float )
     
     for i in range( spec.shape[0] ):
         for j in range( spec.shape[1] ):
@@ -965,9 +1028,14 @@ def getContinuum( spec, Conf ):
             spline = bspl.iterfit( xarr, spec[i,j], maxiter = 15, lower = 0.3, upper = 2.0, bkspace = 400, nord = 3 )[0]
             
             thecont[i,j] = spline.value( xarr )[0]
-            spec_cf[i.j] = spec[i,j] / thecont[i,j]
+            spec_cf[i,j] = spec[i,j] / thecont[i,j]
+            sigspec_cf[i,j] = sigspec[i,j] / thecont[i,j]
             
-    return thecont, spec_cf
+    pickle.dump( thecont, open( Conf.rdir + 'cont.pkl', 'wb' ) )
+    pickle.dump( spec_cf, open( Conf.rdir + 'contfitspec.pkl', 'wb' ) )
+    pickle.dump( sigspec_cf, open( Conf.rdir + 'contfitsigspec.pkl', 'wb' ) )
+            
+    return thecont, spec_cf, sigspec_cf
 
 ########## Spec Plots ##########
 
