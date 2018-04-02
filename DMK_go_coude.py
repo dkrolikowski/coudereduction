@@ -167,7 +167,7 @@ def Make_Cube( Files, ReadNoise, DarkVal, Bias = None, Flat = None, BPM = None )
         if i == 0:
             Cube = np.zeros( ( len( Files ), frame.shape[0], frame.shape[1] ) )
             SNR  = np.zeros( ( len( Files ), frame.shape[0], frame.shape[1] ) )
-            
+                        
         Cube[i] = frame - DarkVal[0]
         CubeErr = np.sqrt( Cube[i] + DarkVal[0] + ReadNoise[i] ** 2.0 )
         
@@ -253,21 +253,22 @@ def Find_Orders( Flat, orderstart ):
 
     startzeros, startvals = Start_Trace( Flat[:,orderstart], 60.0 )
     midzeros, midvals     = Start_Trace( Flat[:,midpoint], 45.0 )
-
+    
     midzeros = midzeros[2:]
     midvals  = midvals[2:]
 
     slopes = []
     dx     = Flat.shape[1] + orderstart - midpoint
-    for i in range( 30 ):
+    
+    for i in range( 5, 40 ):
         dy = float( startzeros[i] - midzeros[i] )
         slopes.append( dy / dx )
 
-    slopefit = np.polyfit( range( 30 ), slopes, 2 )
-
+    slopefit = np.polyfit( range( 5, 40 ), slopes, 2 )
+    
     finalzeros = np.round( midzeros + np.polyval( slopefit, range( len( midzeros ) ) ) * dx ).astype( int )
     finalvals  = Flat[finalzeros, orderstart]
-
+    
     return finalzeros, finalvals
 
 def Full_Trace( brightcube, orderzeros, orderstart ):
@@ -337,7 +338,7 @@ def Get_Trace( Flat, Cube, Conf ):
         if FitTrace[0,-1] <= 10.0:
             MedTrace = MedTrace[1:]
             FitTrace = FitTrace[1:]
-        print( 'Saving median trace to file' )
+        print( 'Saving median and fitted trace to file' )
         pickle.dump( MedTrace, open( Conf.rdir + 'median_trace.pkl', 'wb' ) )
         pickle.dump( FitTrace, open( Conf.rdir + 'fitted_trace.pkl', 'wb' ) )
 
@@ -625,7 +626,7 @@ def Smooth_Spec( spec, specsig ):
             normfilt[i,j]   = filtered / np.max( filtered )
             allfilt[i,j]    = filtered
 
-    return smoothed, smoothsig, normfilt, allfilt
+    return smoothed, smoothsig, normfilt
 
 def Get_Shift( cube, comp ):
     
@@ -665,8 +666,9 @@ def Get_WavSol( Cube, CubeSig, Conf, plots = True, Frames = 'All', Orders = 'All
 
         orderdif = Get_Shift( filtcube[0], compspec )
 
-        if orderdif < 0 or orderdif + Cube.shape[0] > roughsol.shape[0]:
+        if orderdif < 0 or orderdif + Cube.shape[1] > roughsol.shape[0]:
             print( orderdif )
+            pdb.set_trace()
             raw_input( 'Problem with number of orders found.\n' )
 
         FullWavSol  = np.zeros( ( Cube.shape[0], Cube.shape[1], Cube.shape[2] ) )
