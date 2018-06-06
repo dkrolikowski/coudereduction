@@ -15,6 +15,7 @@ import os, readcol, pickle, pdb
 #nightarr = [20161121]
 #nightarr = [20161122,20161123,20161124,20161127,20161205,20161219,20161220 ]
 
+nightarr = [ 20180531 ]
 nightarr = [ str(night) for night in nightarr ]
 
 for night in nightarr:
@@ -26,12 +27,12 @@ for night in nightarr:
             self.codedir = os.getenv("HOME") + '/codes/coudereduction/'
     
             self.CalsDone   = True
-            self.TraceDone  = False
-            self.ArcExDone  = False
+            self.TraceDone  = True
+            self.ArcExDone  = True
             self.ObjExDone  = False
-            self.ArcWavDone = False
-            self.ObjWavDone = False
-            self.ContDone   = False
+            self.ArcWavDone = True
+            self.ObjWavDone = True
+            self.ContDone   = True
     
             self.PlotsOn    = False
     
@@ -89,13 +90,16 @@ for night in nightarr:
         spec      = pickle.load( open( Conf.rdir + 'extracted_spec.pkl', 'rb' ) )
         sig_spec  = pickle.load( open( Conf.rdir + 'extracted_sigspec.pkl', 'rb' ) )
     else:
-        spec, sig_spec   = Fns.Extractor( ObjCube, ObjSNR, FitTrace, quick = False, arc = False, nosub = False )
+#        spec, sig_spec   = Fns.Extractor( ObjCube, ObjSNR, FitTrace, quick = False, arc = False, nosub = False )
+        spec, sig_spec   = Fns.Extractor( ObjCube, ObjSNR, FitTrace, quick = True, arc = False, nosub = True )
         
         spec     = spec[:,::-1]
         sig_spec = sig_spec[:,::-1]
         
-        pickle.dump( spec, open( Conf.rdir + 'extracted_spec.pkl', 'wb' ) )
-        pickle.dump( sig_spec, open( Conf.rdir + 'extracted_sigspec.pkl', 'wb' ) )
+#        pickle.dump( spec, open( Conf.rdir + 'extracted_spec.pkl', 'wb' ) )
+#        pickle.dump( sig_spec, open( Conf.rdir + 'extracted_sigspec.pkl', 'wb' ) )
+        pickle.dump( spec, open( Conf.rdir + 'extracted_spec_quick.pkl', 'wb' ) )
+        pickle.dump( sig_spec, open( Conf.rdir + 'extracted_sigspec_quick.pkl', 'wb' ) )
             
     arcwavsol = Fns.Get_WavSol( wspec, sig_wspec, Conf )
     objwavsol = Fns.Interpolate_Obj_WavSol( arcwavsol, FileInfo, ArcInds, ObjInds, Conf )
