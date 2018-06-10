@@ -181,7 +181,7 @@ def Make_Cube( Files, ReadNoise, Gain, DarkVal, Bias = None, Flat = None, BPM = 
             plt.imshow( np.log10( Cube[i] ), aspect = 'auto' )
             plt.savefig( 'notclean.pdf' )
 
-            cos = cosmics.cosmicsimage( Cube[i], gain = Gain, readnoise = ReadNoise[i], sigclip = 5.0, sigfrac = 0.3, objlim = 5.0 )
+            cos = cosmics.cosmicsimage( Cube[i], gain = Gain[i], readnoise = ReadNoise[i], sigclip = 5.0, sigfrac = 0.3, objlim = 5.0 )
             
             cos.run( maxiter = 10 )
             
