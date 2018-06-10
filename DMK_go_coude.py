@@ -22,6 +22,8 @@ from astropy.io import fits
 from astropy.time import Time
 from scipy import signal
 
+import cosmics
+
 ###################################################################################################
 
 ### FUNCTIONS ###
@@ -158,7 +160,7 @@ def Make_BPM( Bias, Flat, CutLevel, Conf ):
 
     return BPM
 
-def Make_Cube( Files, ReadNoise, DarkVal, Bias = None, Flat = None, BPM = None ):
+def Make_Cube( Files, ReadNoise, Gain, DarkVal, Bias = None, Flat = None, BPM = None, arc = False ):
     # Make the cubes for a certain set of files
 
     for i in range( len( Files ) ):
@@ -170,6 +172,26 @@ def Make_Cube( Files, ReadNoise, DarkVal, Bias = None, Flat = None, BPM = None )
                         
         Cube[i] = frame - DarkVal[0]
         CubeErr = np.sqrt( Cube[i] + DarkVal[0] + ReadNoise[i] ** 2.0 )
+        
+        # Perform cosmic subtraction
+        
+        if not arc:
+            
+            plt.clf()
+            plt.imshow( np.log10( Cube[i] ), aspect = 'auto' )
+            plt.savefig( 'notclean.pdf' )
+
+            cos = cosmics.cosmicsimage( Cube[i], gain = Gain, readnoise = ReadNoise[i], sigclip = 5.0, sigfrac = 0.3, objlim = 5.0 )
+            
+            cos.run( maxiter = 10 )
+            
+            Cube[i] = cos.cleanarray
+            
+            plt.clf()
+            plt.imshow( np.log10( Cube[i] ), aspect = 'auto' )
+            plt.savefig( 'clean.pdf' )
+
+            pdb.set_trace()
         
         # Test with the old way
 #        SNR[i]  = Cube[i] / CubeErr
@@ -203,11 +225,13 @@ def Return_Cubes( ArcInds, ObjInds, FileInfo, DarkCube, Bias, Flat, BPM ):
 
     ReadNoise       = FileInfo.rdn[ArcInds] / FileInfo.gain[ArcInds]
     DarkVal         = DarkCube[ArcInds] / FileInfo.gain[ArcInds]
-    ArcCube, ArcSNR = Make_Cube( FileInfo.File[ArcInds].values, ReadNoise.values, DarkVal.values, Bias = Bias )
+    GainVals        = FileInfo.gain[ArcInds].values
+    ArcCube, ArcSNR = Make_Cube( FileInfo.File[ArcInds].values, ReadNoise.values, GainVals, DarkVal.values, Bias = Bias, arc = True )
 
     ReadNoise       = FileInfo.rdn[ObjInds] / FileInfo.gain[ObjInds]
     DarkVal         = DarkCube[ObjInds] / FileInfo.gain[ObjInds]
-    ObjCube, ObjSNR = Make_Cube( FileInfo.File[ObjInds].values, ReadNoise.values, DarkVal.values, Bias = Bias, Flat = Flat, BPM = BPM )
+    GainVals        = FileInfo.gain[ObjInds].values
+    ObjCube, ObjSNR = Make_Cube( FileInfo.File[ObjInds].values, ReadNoise.values, GainVals, DarkVal.values, Bias = Bias, Flat = Flat, BPM = BPM )
 
     return ArcCube, ArcSNR, ObjCube, ObjSNR
 
