@@ -160,7 +160,7 @@ def Make_BPM( Bias, Flat, CutLevel, Conf ):
 
     return BPM
 
-def Make_Cube( Files, ReadNoise, Gain, DarkVal, Bias = None, Flat = None, BPM = None, arc = False ):
+def Make_Cube( Files, ReadNoise, Gain, DarkVal, Bias = None, Flat = None, BPM = None, arc = False, cossub = True ):
     # Make the cubes for a certain set of files
 
     for i in range( len( Files ) ):
@@ -175,15 +175,14 @@ def Make_Cube( Files, ReadNoise, Gain, DarkVal, Bias = None, Flat = None, BPM = 
         
         # Perform cosmic subtraction
         
-        if not arc:
+        if not arc and cossub:
             
             cos = cosmics.cosmicsimage( Cube[i], gain = Gain[i], readnoise = ReadNoise[i], sigclip = 5.0, sigfrac = 0.3, objlim = 5.0 )
             
-            cos.run( maxiter = 10 )
+            cos.run( maxiter = 2 )
             
             Cube[i] = cos.cleanarray
 
-        # Test with the old way
 #        SNR[i]  = Cube[i] / CubeErr
                         
         CBerrVal = CubeErr ** 2.0 / Cube[i] ** 2.0
@@ -210,18 +209,18 @@ def Make_Cube( Files, ReadNoise, Gain, DarkVal, Bias = None, Flat = None, BPM = 
         
     return Cube, SNR
 
-def Return_Cubes( ArcInds, ObjInds, FileInfo, DarkCube, Bias, Flat, BPM ):
+def Return_Cubes( ArcInds, ObjInds, FileInfo, DarkCube, Bias, Flat, BPM, Conf ):
     # Make the cubes and return to the script running the reduction
 
     ReadNoise       = FileInfo.rdn[ArcInds] / FileInfo.gain[ArcInds]
     DarkVal         = DarkCube[ArcInds] / FileInfo.gain[ArcInds]
     GainVals        = FileInfo.gain[ArcInds].values
-    ArcCube, ArcSNR = Make_Cube( FileInfo.File[ArcInds].values, ReadNoise.values, GainVals, DarkVal.values, Bias = Bias, arc = True )
+    ArcCube, ArcSNR = Make_Cube( FileInfo.File[ArcInds].values, ReadNoise.values, GainVals, DarkVal.values, Bias = Bias, arc = True, cossub = Conf.CosmicSub )
 
     ReadNoise       = FileInfo.rdn[ObjInds] / FileInfo.gain[ObjInds]
     DarkVal         = DarkCube[ObjInds] / FileInfo.gain[ObjInds]
     GainVals        = FileInfo.gain[ObjInds].values
-    ObjCube, ObjSNR = Make_Cube( FileInfo.File[ObjInds].values, ReadNoise.values, GainVals, DarkVal.values, Bias = Bias, Flat = Flat, BPM = BPM )
+    ObjCube, ObjSNR = Make_Cube( FileInfo.File[ObjInds].values, ReadNoise.values, GainVals, DarkVal.values, Bias = Bias, Flat = Flat, BPM = BPM, cossub = Conf.CosmicSub )
 
     return ArcCube, ArcSNR, ObjCube, ObjSNR
 
@@ -337,6 +336,7 @@ def Get_Trace( Flat, Cube, Conf ):
         meds      = [ np.median( Cube[i,:,:2048] ) for i in range( Cube.shape[0] ) ]
         abovemedi = np.where( meds >= np.percentile( meds, Conf.MedCut ) )
         abovemed  = Cube[ abovemedi ]
+        abovemed = np.array( [ Flat ] )
                 
         trace     = Full_Trace( abovemed, orderzeros, orderstart )
 #        pickle.dump( meds, open( Conf.rdir + 'cubemeds.pkl', 'wb' ) )
@@ -673,7 +673,8 @@ def Get_WavSol( Cube, CubeSig, Conf, plots = True, Frames = 'All', Orders = 'All
         if Orders == 'All': orderloop = range( Cube.shape[1] )
         else:               orderloop = Orders
 
-        roughsol = pickle.load( open( Conf.codedir + 'prelim_wsol.pkl', 'rb' ) )
+        # roughsol = pickle.load( open( Conf.codedir + 'prelim_wsol.pkl', 'rb' ) )
+        roughsol = pickle.load( open( Conf.codedir + 'BillWavSol.pkl', 'rb' ) )
         compspec = pickle.load( open( Conf.codedir + 'normfilt.pkl', 'rb' ) )
 
         smoothcube, smoothsig, filtcube = Smooth_Spec( Cube, CubeSig )

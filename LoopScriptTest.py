@@ -32,7 +32,7 @@ for night in nightarr:
             self.ObjExDone  = False
             self.ArcWavDone = True
             self.ObjWavDone = True
-            self.ContDone   = True
+            self.ContDone   = False
     
             self.PlotsOn    = False
     
@@ -90,16 +90,16 @@ for night in nightarr:
         spec      = pickle.load( open( Conf.rdir + 'extracted_spec.pkl', 'rb' ) )
         sig_spec  = pickle.load( open( Conf.rdir + 'extracted_sigspec.pkl', 'rb' ) )
     else:
-        spec, sig_spec   = Fns.Extractor( ObjCube, ObjSNR, FitTrace, quick = False, arc = False, nosub = False )
-#        spec, sig_spec   = Fns.Extractor( ObjCube, ObjSNR, FitTrace, quick = True, arc = False, nosub = True )
+#        spec, sig_spec   = Fns.Extractor( ObjCube, ObjSNR, FitTrace, quick = False, arc = False, nosub = False )
+        spec, sig_spec   = Fns.Extractor( ObjCube, ObjSNR, FitTrace, quick = True, arc = False, nosub = True )
         
         spec     = spec[:,::-1]
         sig_spec = sig_spec[:,::-1]
         
-        pickle.dump( spec, open( Conf.rdir + 'extracted_spec.pkl', 'wb' ) )
-        pickle.dump( sig_spec, open( Conf.rdir + 'extracted_sigspec.pkl', 'wb' ) )
-#        pickle.dump( spec, open( Conf.rdir + 'extracted_spec_quick.pkl', 'wb' ) )
-#        pickle.dump( sig_spec, open( Conf.rdir + 'extracted_sigspec_quick.pkl', 'wb' ) )
+#        pickle.dump( spec, open( Conf.rdir + 'extracted_spec.pkl', 'wb' ) )
+#        pickle.dump( sig_spec, open( Conf.rdir + 'extracted_sigspec.pkl', 'wb' ) )
+        pickle.dump( spec, open( Conf.rdir + 'extracted_spec_quick.pkl', 'wb' ) )
+        pickle.dump( sig_spec, open( Conf.rdir + 'extracted_sigspec_quick.pkl', 'wb' ) )
             
     arcwavsol = Fns.Get_WavSol( wspec, sig_wspec, Conf )
     objwavsol = Fns.Interpolate_Obj_WavSol( arcwavsol, FileInfo, ArcInds, ObjInds, Conf )
