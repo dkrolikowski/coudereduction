@@ -165,7 +165,7 @@ def Basic_Cals( BiasInds, FlatInds, FileInfo, Conf ):
 ### Section: Generate data cubes -- 2D spectral cubes for arc and object exposures ###
 
 ## Function: Make the data cubes! With cosmic subtraction, error propagation ##
-def Make_Cube( Files, ReadNoise, Gain, DarkVal, Bias = None, Flat = None, BPM = None, cossub = False ):
+def Make_Cube( Files, ReadNoise, Gain, DarkVal, Conf, Bias = None, Flat = None, BPM = None, cossub = False ):
 
     for f in range( len( Files ) ): # Loop through all files
         frame = fits.open( Files[f] )[0].data
@@ -180,7 +180,7 @@ def Make_Cube( Files, ReadNoise, Gain, DarkVal, Bias = None, Flat = None, BPM = 
         # Perform cosmic subtraction, if specified
         if cossub:
             cos = cosmics.cosmicsimage( Cube[f], gain = Gain[f], readnoise = ReadNoise[f], sigclip = 5.0, sigfrac = 0.3, objlim = 5.0 )
-            cos.run( maxiter = 2 )
+            cos.run( maxiter = Conf.cos_iters )
             Cube[f] = cos.cleanarray
                         
         CBerrVal = CubeErr ** 2.0 / Cube[f] ** 2.0
@@ -214,13 +214,13 @@ def Return_Cubes( ArcInds, ObjInds, FileInfo, DarkCube, Bias, Flat, BPM, Conf ):
     ReadNoise       = FileInfo.rdn[ArcInds] / FileInfo.gain[ArcInds]
     DarkVal         = DarkCube[ArcInds] / FileInfo.gain[ArcInds]
     GainVals        = FileInfo.gain[ArcInds].values
-    ArcCube, ArcSNR = Make_Cube( FileInfo.File[ArcInds].values, ReadNoise.values, GainVals, DarkVal.values, Bias = Bias )
+    ArcCube, ArcSNR = Make_Cube( FileInfo.File[ArcInds].values, ReadNoise.values, GainVals, DarkVal.values, Conf, Bias = Bias )
 
     if Conf.verbose: print( 'Generating object spectral cubes' )
     ReadNoise       = FileInfo.rdn[ObjInds] / FileInfo.gain[ObjInds]
     DarkVal         = DarkCube[ObjInds] / FileInfo.gain[ObjInds]
     GainVals        = FileInfo.gain[ObjInds].values
-    ObjCube, ObjSNR = Make_Cube( FileInfo.File[ObjInds].values, ReadNoise.values, GainVals, DarkVal.values, Bias = Bias, Flat = Flat, BPM = BPM, cossub = Conf.CosmicSub )
+    ObjCube, ObjSNR = Make_Cube( FileInfo.File[ObjInds].values, ReadNoise.values, GainVals, DarkVal.values, Conf, Bias = Bias, Flat = Flat, BPM = BPM, cossub = Conf.CosmicSub )
 
     return ArcCube, ArcSNR, ObjCube, ObjSNR
 
@@ -355,9 +355,18 @@ def Get_Trace( Flat, Cube, Conf ):
         if Conf.verbose: print( 'Performing preliminary trace' )
 
         # Plot the preliminary trace
+        
         plt.clf()
+        plt.figure()
+        plt.plot( np.arange( orderzeros.size ), orderzeros, 'r+' )
+
+        plt.figure()
+        plt.plot( np.diff( orderzeros ), 'r+' )
+        
+        plt.figure()
         plt.plot( Flat[:,orderstart], 'k-' ); plt.plot( orderzeros, ordervals, 'r+' )
-        plt.savefig( Conf.rdir + 'plots/prelimtrace.pdf' ); plt.clf()
+        #plt.savefig( Conf.rdir + 'plots/prelimtrace.pdf' ); 
+        plt.show()
 
         # Determine the brightest object frames for trace finding
         meds      = [ np.nanmedian( Cube[i,:,:2048] ) for i in range( Cube.shape[0] ) ]

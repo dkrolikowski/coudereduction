@@ -7,8 +7,9 @@ import os, pickle, pdb
 
 ##### Set the names of the directories you want to reduce! #####
 
-nightarr = [ 20181221, 20181222, 20190111, 20190112, 20190216, 20190217 ]
-nightarr = [ 20161118, 20161119, 20161120, 20161121, 20161122, 20161123, 20161124, 20161127 ]
+#nightarr = [ 20181221, 20181222, 20190111, 20190112, 20190216, 20190217 ]
+#nightarr = [ 20161205, 20161206, 20161219, 20161220, 20161222 ]
+nightarr = [ 20200316 ]
 
 if not isinstance( nightarr[0], basestring ):
     nightarr = [ str(night) for night in nightarr ]
@@ -32,17 +33,18 @@ for night in nightarr:
                 
             ## Set which things to be done! ##
             self.doCals   = False    # Extract and reduce calibration files
-            self.doTrace  = False    # Do the trace!
-            self.doArcEx  = False    # Extract arc spectra -- simple extraction
+            self.doTrace  = True    # Do the trace!
+            self.doArcEx  = True    # Extract arc spectra -- simple extraction
             self.doObjEx  = True    # Extract object spectra -- full extraction
-            self.doArcWav = False    # Determine arc spectra wavelength solutions
-            self.doObjWav = False    # Apply wavelength solutions to object spectra
+            self.doArcWav = True    # Determine arc spectra wavelength solutions
+            self.doObjWav = True    # Apply wavelength solutions to object spectra
             
             ## Set other important parameters ##
             self.CosmicSub  = False   # Create object spectral cube with cosmic ray subtraction
             self.ObjExType  = 'full'  # Set the extraction method for objects: 'full' or 'arc'
             self.verbose    = True    # Basically just have as much printing of what's going on to the terminal
             self.WavPolyOrd = 2       # Polynomial order for the wavelength solution fit
+            self.cos_iters  = 2       # Set the number of iterations for the cosmic subtraction
             
             self.InfoFile   = 'headstrip.csv'   # Name for the header info file
             self.PrelimWav  = 'prelim_wsol_new.pkl' # Name for the preliminary wavelength solution (initial guess)
@@ -73,7 +75,7 @@ for night in nightarr:
     ## Create the header info file
     if not os.path.exists( Conf.dir + Conf.InfoFile ):
         Fns.Header_Info( Conf )
-    
+            
     FileInfo = pd.read_csv( Conf.InfoFile )
     
     ##### Set up file indices from header file #####
@@ -85,7 +87,7 @@ for night in nightarr:
     arc_hdrnames    = [ 'Thar', 'ThAr', 'THAR', 'A' ]
     notobj_hdrnames = [ 'solar', 'SolPort', 'solar port', 'Solar Port', 'test', 'SolarPort', 'Solport', 'solport', 'Sol Port', 'Solar Port Halpha' ]
     
-    arc_exptime     = 10.0
+    arc_exptime     = 30.0
     
     ArcInds    = np.where( np.logical_and( ( ( FileInfo.Type.values == 'comp' ) & ( FileInfo.ExpTime.values > arc_exptime ) ), np.any( [ FileInfo.Object == hdrname for hdrname in arc_hdrnames ], axis = 0 ) ) )[0]
 #    ArcInds = np.where( np.logical_and( FileInfo.Type.values == 'comp', np.any( [ FileInfo.Object == hdrname for hdrname in arc_hdrnames ], axis = 0 ) ) )[0]
