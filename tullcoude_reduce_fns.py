@@ -264,11 +264,18 @@ def Start_Trace( flatslice, percent ):
 def Find_Orders( Flat, orderstart ):
     # Uses flat slices at edge and in middle and uses that to refine initial points
 
-    midpoint = ( Flat.shape[1] + orderstart ) / 2
+    midpoint = ( ( Flat.shape[1] + orderstart ) / 2 ) + 100
 
     startzeros, startvals = Start_Trace( Flat[:,orderstart], 60.0 ) # Get peaks for edge of flat
     midzeros, midvals     = Start_Trace( Flat[:,midpoint], 45.0 )   # Get peaks for middle of flat
     
+#    plt.clf()
+#    plt.figure()
+#    plt.plot( Flat[:,orderstart], 'k-' ); plt.plot( startzeros, startvals, 'r+' )
+#    plt.figure()
+#    plt.plot( Flat[:,midpoint], 'b-' ); plt.plot( midzeros, midvals, 'm+' )
+#    plt.show()
+        
     # By hand remove extra orders that are present at the midpoint
     midzeros = midzeros[2:]
     midvals  = midvals[2:]
@@ -277,15 +284,15 @@ def Find_Orders( Flat, orderstart ):
     slopes = []
     dx     = Flat.shape[1] + orderstart - midpoint
     
-    for i in range( 5, 40 ):
+    for i in range( 5, 50 ):
         dy = float( startzeros[i] - midzeros[i] )
         slopes.append( dy / dx )
 
-    slopefit = np.polyfit( range( 5, 40 ), slopes, 2 )
+    slopefit = np.polyfit( range( 5, 50 ), slopes, 2 )
     
     finalzeros = np.round( midzeros + np.polyval( slopefit, range( len( midzeros ) ) ) * dx ).astype( int )
     finalvals  = Flat[finalzeros, orderstart]
-    
+            
     return finalzeros, finalvals
 
 ## Function: Use order starting points to calculate full trace from bright object spectra ##
@@ -356,17 +363,17 @@ def Get_Trace( Flat, Cube, Conf ):
 
         # Plot the preliminary trace
         
-        plt.clf()
-        plt.figure()
-        plt.plot( np.arange( orderzeros.size ), orderzeros, 'r+' )
-
-        plt.figure()
-        plt.plot( np.diff( orderzeros ), 'r+' )
-        
+#        plt.clf()
+#        plt.figure()
+#        plt.plot( np.arange( orderzeros.size ), orderzeros, 'r+' )
+#
+#        plt.figure()
+#        plt.plot( np.diff( orderzeros ), 'r+' )
+#        
         plt.figure()
         plt.plot( Flat[:,orderstart], 'k-' ); plt.plot( orderzeros, ordervals, 'r+' )
-        #plt.savefig( Conf.rdir + 'plots/prelimtrace.pdf' ); 
-        plt.show()
+        plt.savefig( Conf.rdir + 'plots/prelimtrace.pdf' ); plt.clf()
+#        plt.show()
 
         # Determine the brightest object frames for trace finding
         meds      = [ np.nanmedian( Cube[i,:,:2048] ) for i in range( Cube.shape[0] ) ]

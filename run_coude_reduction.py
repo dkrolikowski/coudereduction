@@ -27,7 +27,7 @@ for night in nightarr:
         def __init__( self ):
             
             ## Set directories ##
-            self.dir     = os.getenv("HOME") + '/Research/YMG/coude_data/' + night + '/'
+            self.dir     = os.getenv("HOME") + '/Research/coude_data/' + night + '/'
             self.rdir    = self.dir + 'reduction/'
             self.codedir = os.getenv("HOME") + '/codes/coudereduction/'
                 
