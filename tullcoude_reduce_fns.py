@@ -338,7 +338,7 @@ def Fit_Trace( Trace ):
                 
         meddiff   = np.median( np.abs( fitpars[:,i] - hyperfit ) )
         mask      = np.where( np.abs( fitpars[:,i] - hyperfit ) <= 5 * meddiff )[0] # Correct orders more than 5 "sigma" bad
-        
+
         hyperpars = np.polyfit( mask, fitpars[mask,i], 3 )
         hyperfit  = np.polyval( hyperpars, np.arange( fitpars.shape[0] ) )
         
@@ -621,16 +621,24 @@ def Plot_Order_Wavsol( wavsol, wavkept, spec, THAR, path, frame, order ):
             fig   = plt.figure()
             j = 1
             while start <= np.max( wavsol ) and j < 7:
+                
+                window_min = start
+                window_max = start + 12.0
+                
+                data_loc = np.where( ( wavsol >= window_min ) & ( wavsol <= window_max ) )[0]
+                ref_loc  = np.where( ( THAR['wav'] >= window_min ) & ( THAR['wav'] <= window_max ) )[0]
+                y_offset = np.nanpercentile( THAR['logspec'][ref_loc], 35.0 ) - np.nanpercentile( spec[data_loc], 35.0 )
+                
                 sbplt = 230 + j
                 fig.add_subplot(sbplt)
-                plt.plot( wavsol, spec, 'k-', lw = 1 )
-                plt.plot( THAR['wav'], THAR['logspec'], 'r-', lw = 1 )
+                plt.plot( wavsol[data_loc], spec[data_loc] + 0.4 * y_offset, 'k-', lw = 1 )
+                plt.plot( THAR['wav'][ref_loc], THAR['logspec'][ref_loc], 'r-', lw = 1 )
                 for peak in wavkept:
                     plt.axvline( x = peak, color = 'b', ls = ':', lw = 1 )
-                plt.xlim( start, start + 10.0 )
+                plt.xlim( start, start + 12.0 )
                 plt.yticks( [], [] )
                 low = np.round( start, 1 )
-                plt.xticks( np.linspace( low, low + 10.0, 3 ), fontsize = 5 )
+                plt.xticks( np.linspace( low, low + 12.0, 3 ), fontsize = 5 )
                 start += 10.0
                 j += 1
             plt.suptitle( 'Frame: ' + str(frame) + ', Order: ' + str(order) + ', Window: ' + str(i) )
@@ -811,7 +819,9 @@ def Fit_WavSol( wav, spec, specsig, THARcat, path, THAR, Conf, snr = 5, minsep =
         
         # Determine which lines are outliers in wavelength and velocity residuals
         velcut = np.sum( np.abs(resids['vel']) >= 5.0 )
-        torej  = np.abs( resids['wav'] ) >= cutoff * medabsdev
+        
+        torej  = ( np.abs( resids['wav'] ) >= cutoff * medabsdev ) # | ( keeps['pix'] < 512 ) | ( keeps['pix'] > 1536 )
+        
         tokeep = np.logical_not( torej )
         numrej = np.sum( torej )
         
@@ -913,12 +923,14 @@ def Get_WavSol( Cube, CubeSig, Conf, plots = True, Frames = 'All', Orders = 'All
 
         # Find the shift in the orders extracted (if there is one) think about this
         smoothcube, smoothsig, filtcube = Smooth_Spec( Cube, CubeSig )
-        orderdif                        = Get_Shift( filtcube[0], Conf )
+        # orderdif                        = Get_Shift( filtcube[0], Conf )
+        
+        orderdif = 0
 
-        if orderdif < 0 or orderdif + Cube.shape[1] > roughsol.shape[0]:
-            print( orderdif )
-            pdb.set_trace()
-            raw_input( 'Problem with number of orders found.\n' )
+        # if orderdif < 0 or orderdif + Cube.shape[1] > roughsol.shape[0]:
+        #     print( orderdif )
+        #     pdb.set_trace()
+        #     raw_input( 'Problem with number of orders found.\n' )
 
         # Initialize arrays for the full wavelength solution, and the wavelength fit parameters
         FullWavSol  = np.zeros( ( Cube.shape[0], Cube.shape[1], Cube.shape[2] ) )
@@ -975,7 +987,10 @@ def Get_WavSol( Cube, CubeSig, Conf, plots = True, Frames = 'All', Orders = 'All
 
                 FullWavSol[frame,order] = wavsol
                 FullParams[frame,order] = params
-
+                
+            pickle.dump( FullWavSol[frame], open( framepath + '/wavsol_' + str(frame) + '.pkl', 'wb' ) )
+            pickle.dump( FullParams[frame], open( framepath + '/wavparams_' + str(frame) + '.pkl', 'wb' ) )
+            
         for f in range( badorders.shape[0] ): print( 'Bad orders for frame', str(f), np.where( badorders[f] )[0] )
         
         # Now to fix those bad orders!
