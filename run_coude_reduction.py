@@ -9,7 +9,7 @@ import os, pickle, pdb
 
 #nightarr = [ 20181221, 20181222, 20190111, 20190112, 20190216, 20190217 ]
 #nightarr = [ 20161205, 20161206, 20161219, 20161220, 20161222 ]
-nightarr = [ 20200316 ]
+nightarr = [ 20200801, 20200802, 20200803, 20200804 ]
 
 if not isinstance( nightarr[0], basestring ):
     nightarr = [ str(night) for night in nightarr ]
@@ -27,17 +27,17 @@ for night in nightarr:
         def __init__( self ):
             
             ## Set directories ##
-            self.dir     = os.getenv("HOME") + '/Research/coude_data/' + night + '/'
+            self.dir     = os.getenv("HOME") + '/Research/YMG/coude_data/' + night + '/'
             self.rdir    = self.dir + 'reduction/'
             self.codedir = os.getenv("HOME") + '/codes/coudereduction/'
                 
             ## Set which things to be done! ##
             self.doCals   = False    # Extract and reduce calibration files
-            self.doTrace  = True    # Do the trace!
-            self.doArcEx  = True    # Extract arc spectra -- simple extraction
+            self.doTrace  = False    # Do the trace!
+            self.doArcEx  = False    # Extract arc spectra -- simple extraction
             self.doObjEx  = True    # Extract object spectra -- full extraction
-            self.doArcWav = True    # Determine arc spectra wavelength solutions
-            self.doObjWav = True    # Apply wavelength solutions to object spectra
+            self.doArcWav = False    # Determine arc spectra wavelength solutions
+            self.doObjWav = False    # Apply wavelength solutions to object spectra
             
             ## Set other important parameters ##
             self.CosmicSub  = False   # Create object spectral cube with cosmic ray subtraction
@@ -51,7 +51,7 @@ for night in nightarr:
             
             self.DarkCurVal = 0.0    # Value of the dark current
             self.BPMlimit   = 99.9   # Percentile to mark above as a bad pixel
-            self.MedCut     = 90.0   # Flux percentile to cut at when making final trace using object spectra
+            self.MedCut     = 85.0   # Flux percentile to cut at when making final trace using object spectra
             
             ## Other thing to do ##
             self.doContFit  = True   # Continuum fit the object spectra

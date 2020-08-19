@@ -37,7 +37,6 @@ def Header_Info( Conf ):
     outfile.write( heading )
     
     for f in range( len( files ) ):
-        
         head  = fits.open(files[f])[0].header
         
         itype = head["imagetyp"]
