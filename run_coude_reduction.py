@@ -9,7 +9,7 @@ import os, pickle, pdb
 
 #nightarr = [ 20181221, 20181222, 20190111, 20190112, 20190216, 20190217 ]
 #nightarr = [ 20161205, 20161206, 20161219, 20161220, 20161222 ]
-nightarr = [ 20200801 ]
+nightarr = [ 20210130, 20210131 ]
 
 if not isinstance( nightarr[0], basestring ):
     nightarr = [ str(night) for night in nightarr ]
@@ -27,7 +27,7 @@ for night in nightarr:
         def __init__( self ):
             
             ## Set directories ##
-            self.dir     = os.getenv("HOME") + '/Desktop/' + night + '/'
+            self.dir     = os.getenv("HOME") + '/Research/YMG/coude_data/' + night + '/'
             self.rdir    = self.dir + 'reduction/'
             self.codedir = os.getenv("HOME") + '/codes/coudereduction/'
                 
@@ -35,19 +35,19 @@ for night in nightarr:
             self.doCals   = False    # Extract and reduce calibration files
             self.doTrace  = False    # Do the trace!
             self.doArcEx  = False    # Extract arc spectra -- simple extraction
-            self.doObjEx  = False    # Extract object spectra -- full extraction
+            self.doObjEx  = True    # Extract object spectra -- full extraction
             self.doArcWav = False    # Determine arc spectra wavelength solutions
-            self.doObjWav = True    # Apply wavelength solutions to object spectra
+            self.doObjWav = False    # Apply wavelength solutions to object spectra
             
             ## Set other important parameters ##
-            self.CosmicSub  = True   # Create object spectral cube with cosmic ray subtraction
-            self.ObjExType  = 'full'  # Set the extraction method for objects: 'full' or 'arc'
+            self.CosmicSub  = False   # Create object spectral cube with cosmic ray subtraction
+            self.ObjExType  = 'arc'  # Set the extraction method for objects: 'full' or 'arc'
             self.verbose    = True    # Basically just have as much printing of what's going on to the terminal
-            self.WavPolyOrd = 3       # Polynomial order for the wavelength solution fit
+            self.WavPolyOrd = 2       # Polynomial order for the wavelength solution fit
             self.cos_iters  = 2       # Set the number of iterations for the cosmic subtraction
             
             self.InfoFile   = 'headstrip.csv'   # Name for the header info file
-            self.PrelimWav  = 'updated_billsol_ronan_202008.pkl' # Name for the preliminary wavelength solution (initial guess)
+            self.PrelimWav  = 'prelim_wsol_new.pkl' # Name for the preliminary wavelength solution (initial guess)
             
             self.DarkCurVal = 0.0    # Value of the dark current
             self.BPMlimit   = 99.9   # Percentile to mark above as a bad pixel

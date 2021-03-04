@@ -405,6 +405,13 @@ def Get_Trace( Flat, Cube, Conf ):
         MedTrace = pickle.load( open( Conf.rdir + 'median_trace.pkl', 'rb' ) )
         FitTrace = pickle.load( open( Conf.rdir + 'fitted_trace.pkl', 'rb' ) )
 
+        # Plot the full trace
+        plt.clf()
+        plt.imshow( np.log10( Flat ), aspect = 'auto', cmap = plt.get_cmap( 'gray' ) )
+        for o in range( MedTrace.shape[0] ): plt.plot( MedTrace[o], 'r', lw = 1.0 )
+        for o in range( FitTrace.shape[0] ): plt.plot( FitTrace[o], 'b', lw = 1.0 )
+        plt.xlim( 0, 2048 ); plt.ylim( 2048, 0 ); plt.savefig( Conf.rdir + 'plots/trace.pdf' ); plt.clf()
+
     return MedTrace, FitTrace
 
 #############################################
@@ -923,14 +930,14 @@ def Get_WavSol( Cube, CubeSig, Conf, plots = True, Frames = 'All', Orders = 'All
 
         # Find the shift in the orders extracted (if there is one) think about this
         smoothcube, smoothsig, filtcube = Smooth_Spec( Cube, CubeSig )
-        # orderdif                        = Get_Shift( filtcube[0], Conf )
-        
-        orderdif = 0
+        orderdif                        = Get_Shift( filtcube[1], Conf )
 
-        # if orderdif < 0 or orderdif + Cube.shape[1] > roughsol.shape[0]:
-        #     print( orderdif )
-        #     pdb.set_trace()
-        #     raw_input( 'Problem with number of orders found.\n' )
+        # orderdif = 0 # I think this is right for Bill's wavelength solution.
+        
+        if orderdif < 0 or orderdif + Cube.shape[1] > roughsol.shape[0]:
+            print( orderdif )
+            pdb.set_trace()
+            raw_input( 'Problem with number of orders found.\n' )
 
         # Initialize arrays for the full wavelength solution, and the wavelength fit parameters
         FullWavSol  = np.zeros( ( Cube.shape[0], Cube.shape[1], Cube.shape[2] ) )
