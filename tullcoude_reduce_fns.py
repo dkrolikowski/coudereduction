@@ -246,6 +246,9 @@ def Return_Cubes( ArcInds, ObjInds, FileInfo, DarkCube, Bias, Flat, BPM, Conf ):
 ### Function: Get peak values of trace for a slice of the flat ###
 def Start_Trace( flatslice, percent ):
 
+    # I tried implementing a peak finding method using a trapezoid-esque "wavelet" like thing but abandoned it for whatever reason
+    # This was a method Aaron Rizzuto wrote and it's always just been good enough
+
     fgrad    = np.gradient( flatslice ) # The derivative of the flat field slice (for peak finding)
     cutvalue = np.nanpercentile( abs( fgrad ), percent ) # Find where the flat is above the set percentile for peak finding
 
