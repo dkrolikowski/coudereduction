@@ -499,6 +499,7 @@ def Extractor( Cube, SNR, Trace, Conf, quick = True, arc = False, nosub = True )
             tsnr   = tblock.copy()
             x, y   = [ c.T for c in np.meshgrid( np.arange( tblock.shape[0] ), np.arange( tblock.shape[1] ) ) ]
 
+            # Allow for switching between doing the interpolation and not doing the interpolation, in hopes of getting rid of the extraction fringe issues!
             if Conf.extract_interp == 'old':
                 for pix in range( Trace.shape[1] ): # Put image and snr into the block used for extraction (interpolation? A little unsure about that)
                     low           = np.round(Trace[ord,pix]).astype(int) - 10
