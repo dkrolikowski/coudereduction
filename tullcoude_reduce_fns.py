@@ -477,6 +477,8 @@ def GaussModel( X, p ):
 ### Function: Extraction! All wrapped into one function ###
 def Extractor( Cube, SNR, Trace, Conf, quick = True, arc = False, nosub = True ):
 
+    print( 'Extracting using', Conf.extract_interp, 'for interplation' )
+
     # Initialize arrays for the flux and errors
     flux  = np.zeros( ( Cube.shape[0], Trace.shape[0], Trace.shape[1] ) )
     error = flux * 0.0 # Wait is there a copy issue here lol would there be overwriting of stuff
@@ -497,14 +499,33 @@ def Extractor( Cube, SNR, Trace, Conf, quick = True, arc = False, nosub = True )
             tsnr   = tblock.copy()
             x, y   = [ c.T for c in np.meshgrid( np.arange( tblock.shape[0] ), np.arange( tblock.shape[1] ) ) ]
 
-            # Put image and snr into the block used for extraction
-            # (interpolation? A little unsure about that. I actually think the interpolation might be causing the weird fringing??
-            for pix in range( Trace.shape[1] ):
-                low           = np.round(Trace[ord,pix]).astype(int) - 10
-                high          = np.round(Trace[ord,pix]).astype(int) + 10
-                tblock[pix,:] = np.interp( np.linspace(Trace[ord,pix] - 8, Trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thisfrm[low:high,pix] )
-                tsnr[pix,:]   = np.interp( np.linspace(Trace[ord,pix] - 8, Trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thissnr[low:high,pix] )
+            if Conf.extract_interp == 'old':
+                for pix in range( Trace.shape[1] ): # Put image and snr into the block used for extraction (interpolation? A little unsure about that)
+                    low           = np.round(Trace[ord,pix]).astype(int) - 10
+                    high          = np.round(Trace[ord,pix]).astype(int) + 10
+                    tblock[pix,:] = np.interp( np.linspace(Trace[ord,pix] - 8, Trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thisfrm[low:high,pix] )
+                    tsnr[pix,:]   = np.interp( np.linspace(Trace[ord,pix] - 8, Trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thissnr[low:high,pix] )
+            elif Conf.extract_interp == 'test':
+                for pix in range( Trace.shape[1] ): # Put image and snr into the block used for extraction (interpolation? A little unsure about that)
+                    low           = np.round(Trace[ord,pix]).astype(int) - 8
+                    high          = np.round(Trace[ord,pix]).astype(int) + 8
+                    tblock[pix,:] = np.interp( np.linspace(Trace[ord,pix] - 8, Trace[ord,pix] + 8, 16 ), np.linspace(low,high,16), thisfrm[low:high,pix] )
+                    tsnr[pix,:]   = np.interp( np.linspace(Trace[ord,pix] - 8, Trace[ord,pix] + 8, 16 ), np.linspace(low,high,16), thissnr[low:high,pix] )
+            elif Conf.extract_interp == 'no_interp':
+                for pix in range( Trace.shape[1] ): # Put image and snr into the block used for extraction (interpolation? A little unsure about that)
+                    low           = np.round(Trace[ord,pix]).astype(int) - 8
+                    high          = np.round(Trace[ord,pix]).astype(int) + 8
+                    tblock[pix,:] = thisfrm[low:high,pix]
+                    tsnr[pix,:]   = thissnr[low:high,pix]
 
+            # # Put image and snr into the block used for extraction
+            # # (interpolation? A little unsure about that. I actually think the interpolation might be causing the weird fringing??
+            # for pix in range( Trace.shape[1] ):
+            #     low           = np.round(Trace[ord,pix]).astype(int) - 10
+            #     high          = np.round(Trace[ord,pix]).astype(int) + 10
+            #     tblock[pix,:] = np.interp( np.linspace(Trace[ord,pix] - 8, Trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thisfrm[low:high,pix] )
+            #     tsnr[pix,:]   = np.interp( np.linspace(Trace[ord,pix] - 8, Trace[ord,pix] + 8, 16 ), np.linspace(low,high,20), thissnr[low:high,pix] )
+            #
             # Set nans to have very low SNR values
             tsnr[np.isnan(tsnr)] = 1e-5
 

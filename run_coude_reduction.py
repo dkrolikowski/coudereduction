@@ -8,7 +8,7 @@ import pandas as pd
 import os, pickle, pdb
 
 # I often just manually set a list of nights, because I'm never running that many, but could read in a file
-nightarr = [ 20210130, 20210131 ]
+nightarr = [ 20201128 ]
 
 # Make sure the input night value is a string for purposes of reading in files
 if not isinstance( nightarr[0], basestring ):
@@ -27,8 +27,9 @@ for night in nightarr:
         def __init__( self ):
 
             # Set the relevant directory paths
-            self.dir     = os.getenv("HOME") + '/Research/YMG/coude_data/' + night + '/' # Path to the data
-            self.rdir    = self.dir + 'reduction/' # Name of the directory holding the reduction output
+            self.dir     = '/Volumes/IGRINS_Reduced/coude_data/' + night + '/' # Path to the data
+            # self.dir     = os.getenv("HOME") + '/Research/YMG/coude_data/' + night + '/' # Path to the data
+            self.rdir    = self.dir + 'reduction_newlaptop_test/' # Name of the directory holding the reduction output
             self.codedir = os.getenv("HOME") + '/codes/coudereduction/' # Directory with coude reduction code and relevant ancillary files
 
             # Set which steps to do
@@ -38,11 +39,11 @@ for night in nightarr:
             self.doObjEx  = True    # Extract object spectra -- simple or full extraction
             self.doArcWav = False    # Determine thar spectra wavelength solutions
             self.doObjWav = False    # Apply thar wavelength solutions to object spectra
-            self.doContFit  = True   # Continuum fit the object spectra
+            self.doContFit = True   # Continuum fit the object spectra
 
             # Other parameters for reduction steps
-            self.CosmicSub  = False   # Create object spectral cube with cosmic ray subtraction
-            self.ObjExType  = 'arc'  # Set the extraction method for objects: 'full' or 'arc', arc is just a simple pixel column sum
+            self.CosmicSub  = True   # Create object spectral cube with cosmic ray subtraction
+            self.ObjExType  = 'full'  # Set the extraction method for objects: 'full' or 'arc', arc is just a simple pixel column sum
             self.verbose    = True    # Basically just have as much printing of what's going on to the terminal
             self.WavPolyOrd = 2       # Polynomial order for the wavelength solution fit
             self.cos_iters  = 2       # Set the number of iterations for the cosmic subtraction
@@ -53,6 +54,8 @@ for night in nightarr:
             # File names for things that are needed
             self.InfoFile   = 'headstrip.csv'   # Name for the header info file
             self.PrelimWav  = 'prelim_wsol_new.pkl' # Name for the preliminary wavelength solution (initial guess)
+
+            self.extract_interp = 'no_interp' # old, test, or no_interp
 
     # Set the configurations to a variable to pass to functions
     Conf = Configs()
